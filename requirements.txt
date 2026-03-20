@@ -1,0 +1,15 @@
+# Core
+python-dotenv>=1.0.0
+
+# LLM providers — install at least one
+anthropic>=0.40.0          # for LLM_PROVIDER=anthropic (default)
+openai>=1.50.0             # for LLM_PROVIDER=openai
+
+# Optional: nicer HTML-to-text conversion for HTML-only emails
+beautifulsoup4>=4.12.0
+lxml>=5.0.0
+
+# Gmail API (for funnel label management)
+google-api-python-client>=2.100.0
+google-auth-oauthlib>=1.1.0
+google-auth-httplib2>=0.2.0

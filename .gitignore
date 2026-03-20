@@ -1,0 +1,32 @@
+# Environment / secrets
+.env
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Outbox (may contain personal emails)
+outbox/
+
+# Dry-run ignore list (contains Message-IDs from real emails — keep local)
+dry_run_ignore.json
+
+# Logs
+logs/
+*.log
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
