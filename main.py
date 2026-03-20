@@ -19,9 +19,14 @@ from src.llm_processor import LLMProcessor
 from src.logger import setup_logger
 
 # Only process emails addressed to (or CC-ing) these HR addresses.
+# IMPORTANT: this must include every address that forwards into the
+# polled Gmail inbox (hr.flomad@gmail.com), otherwise _all_ emails
+# will be skipped. See CLAUDE.md → "_is_processable() filter".
 _HR_ADDRESSES: set[str] = {
     "hr@flolabsinnovations.com",
     "hr@flolabsrd.com",
+    "hr.flomad@gmail.com",      # the actual Gmail inbox being polled
+    "hr@flomadlabs.com",        # referenced in workflow doc (Zoom/Fillout logins)
 }
 
 # Domains / addresses that should never receive an automated reply.

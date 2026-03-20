@@ -111,12 +111,20 @@ class EmailReader:
     # Reading
     # ------------------------------------------------------------------
 
+    # Number of emails to fetch per IMAP session before reconnecting.
+    # Gmail drops connections after large bulk fetches (WinError 10054).
+    _RECONNECT_BATCH = 200
+
     def fetch_unread(
         self,
         ignore_message_ids: set[str] | None = None,
         override_limit: int | None = None,
     ) -> Generator[IncomingEmail, None, None]:
         """Yield unread emails from the configured mailbox.
+
+        Automatically reconnects every ``_RECONNECT_BATCH`` emails to avoid
+        Gmail forcibly closing the IMAP connection on large inbox scans
+        (WinError 10054 / BYE).
 
         Args:
             ignore_message_ids: Set of RFC-2822 Message-IDs to skip. Used by
@@ -138,16 +146,42 @@ class EmailReader:
         limit = cap or len(uids)
         ignore = ignore_message_ids or set()
 
-        for uid in uids[:limit]:
-            uid_str = uid.decode()
-            try:
-                incoming = self._fetch_one(conn, uid_str)
-                if incoming.message_id and incoming.message_id in ignore:
-                    logger.debug("Skipping UID %s — in ignore list (%s)", uid_str, incoming.message_id)
-                    continue
-                yield incoming
-            except Exception as exc:
-                logger.warning("Failed to fetch UID %s: %s", uid_str, exc)
+        for batch_start in range(0, min(limit, len(uids)), self._RECONNECT_BATCH):
+            batch = uids[batch_start : batch_start + self._RECONNECT_BATCH]
+
+            # Reconnect at every batch boundary (except the very first, we're
+            # already connected). This avoids Gmail's forced disconnect.
+            if batch_start > 0:
+                logger.debug(
+                    "Reconnecting IMAP after %d emails (batch boundary)…", batch_start
+                )
+                try:
+                    self.disconnect()
+                except Exception:
+                    pass
+                self.connect()
+                conn = self._conn
+                conn.select(f'"{self.config.imap_mailbox}"')  # type: ignore[union-attr]
+
+            for uid in batch:
+                uid_str = uid.decode()
+                try:
+                    # Send NOOP to keep the connection alive within a batch
+                    try:
+                        conn.noop()  # type: ignore[union-attr]
+                    except Exception:
+                        pass
+
+                    incoming = self._fetch_one(conn, uid_str)  # type: ignore[arg-type]
+                    if incoming.message_id and incoming.message_id in ignore:
+                        logger.debug(
+                            "Skipping UID %s — in ignore list (%s)",
+                            uid_str, incoming.message_id,
+                        )
+                        continue
+                    yield incoming
+                except Exception as exc:
+                    logger.warning("Failed to fetch UID %s: %s", uid_str, exc)
 
     def _fetch_one(self, conn: imaplib.IMAP4 | imaplib.IMAP4_SSL, uid: str) -> IncomingEmail:
         _, raw_data = conn.uid("fetch", uid, "(RFC822)")  # type: ignore[call-overload]
