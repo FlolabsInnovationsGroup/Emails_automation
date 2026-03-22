@@ -1,4 +1,9 @@
-"""LLM-based funnel stage classifier."""
+"""LLM-based funnel stage classifier.
+
+For Fillout form submissions, the stage is determined deterministically from
+the form type (see funnel_labels.FORM_STAGE_MAP) — no LLM needed.
+For all other emails (direct applicant replies), we use the LLM to classify.
+"""
 
 from __future__ import annotations
 
@@ -9,34 +14,44 @@ from .email_reader import IncomingEmail
 from .funnel_labels import (
     ALL_STAGES,
     STAGE_REPLIED,
-    STAGE_NEW_APPLICANT,
+    STAGE_NEW,
+    STAGE_INTERESTED,
     STAGE_SCREENING,
-    STAGE_INTERVIEW_SCHEDULED,
-    STAGE_INTERVIEW_DONE,
-    STAGE_OFFER_SENT,
-    STAGE_HIRED,
-    STAGE_REJECTED,
+    STAGE_BEFORE_MEETING,
+    STAGE_SATURDAY_MEETING,
+    STAGE_ATTENDED,
+    STAGE_SECOND_MEETING,
+    STAGE_NOT_INTERESTED,
+    STAGE_NO_ANSWER,
+    FORM_STAGE_MAP,
 )
 
 logger = logging.getLogger("email_automation.classifier")
 
 _CLASSIFY_PROMPT = """\
-You are an HR recruiting assistant. Classify the following email conversation into \
-exactly one of these recruiting funnel stages and reply with ONLY the stage string — \
-nothing else, no punctuation, no explanation.
+You are an HR assistant at FloLabs, classifying an applicant email into exactly one \
+recruiting funnel stage. Reply with ONLY the stage string — nothing else.
 
-Stages (in order):
+Stages (in order of progression):
 {stages}
 
 Definitions:
-- Prospect/01-New Applicant: application or first contact received, no reply from us yet
-- Prospect/02-Replied: we replied acknowledging the application, candidate hasn't confirmed next steps
-- Prospect/03-Screening: candidate is engaged, screening call or availability being discussed
-- Prospect/04-Interview Scheduled: interview or call has been confirmed with a specific date/time
-- Prospect/05-Interview Done: interview completed, follow-up or decision pending
-- Prospect/06-Offer Sent: a job offer has been formally extended
-- Prospect/07-Hired: candidate accepted the offer and is joining
-- Prospect/08-Rejected: candidate declined, withdrew, was rejected, or went silent
+- Prospect/01-New Applicant: first contact, no reply sent yet
+- Prospect/02-Replied: we replied acknowledging interest, awaiting next action from candidate
+- Prospect/03-Interested: candidate confirmed interest, Form 1 (Websites & Presentations) has been sent
+- Prospect/03-Screening: Form 1 submitted, reviewing quality before sending Form 2
+- Prospect/04-Before Meeting: Form 1 approved, Form 2 (Meeting Recordings) sent to candidate
+- Prospect/05-Saturday Meeting: Form 2 approved, candidate invited to Orientation Session
+- Prospect/06-Attended: candidate attended the Orientation Session
+- Prospect/06-Briefly Attended: candidate attended only part of the Orientation Session
+- Prospect/06-Not Attended: candidate did not attend the Orientation Session
+- Prospect/07-Second Meeting: General Masterclass form approved, candidate introduced to Oliver
+- Prospect/08-Agreement Sent: onboarding email sent, agreements and payment link shared
+- Prospect/09-Signed Paid: candidate signed agreements and paid the tuition fee
+- Prospect/09-Signed Non-Paid: candidate signed agreements (scholarship / no fee)
+- Prospect/XX-Not Interested: candidate said they are not interested or withdrew
+- Prospect/XX-No Answer: candidate stopped responding after multiple reminders
+- Prospect/XX-Rejected: candidate was rejected by FloLabs
 
 --- Incoming email ---
 From: {sender}
@@ -54,11 +69,22 @@ def classify_stage(
     incoming: IncomingEmail,
     reply_body: str,
     config: Config,
+    form_type: str | None = None,
 ) -> str:
     """Return the funnel stage string that best fits this conversation.
 
+    If ``form_type`` is provided (Fillout submission), returns the stage
+    deterministically from FORM_STAGE_MAP — no LLM call needed.
+
     Falls back to STAGE_REPLIED on any error.
     """
+    # Deterministic path for Fillout form submissions
+    if form_type and form_type in FORM_STAGE_MAP:
+        stage = FORM_STAGE_MAP[form_type]
+        logger.info("Stage %r assigned deterministically for form_type=%r.", stage, form_type)
+        return stage
+
+    # LLM classification for regular emails
     prompt = _CLASSIFY_PROMPT.format(
         stages="\n".join(f"  {s}" for s in ALL_STAGES),
         sender=f"{incoming.sender} <{incoming.sender_address}>",
@@ -69,10 +95,8 @@ def classify_stage(
 
     try:
         raw = _call_llm(prompt, config).strip()
-        # Accept the response if it exactly matches a known stage
         if raw in ALL_STAGES:
             return raw
-        # Fuzzy match — try a case-insensitive substring search
         raw_lower = raw.lower()
         for stage in ALL_STAGES:
             if stage.lower() in raw_lower or raw_lower in stage.lower():
@@ -84,7 +108,7 @@ def classify_stage(
     return STAGE_REPLIED
 
 
-# ── LLM dispatch (mirrors llm_processor.py pattern) ─────────────────────────
+# ── LLM dispatch ─────────────────────────────────────────────────────────────
 
 def _call_llm(prompt: str, config: Config) -> str:
     if config.llm_provider == "anthropic":

@@ -62,7 +62,7 @@ Thank you for your thoughtful responses to the Websites & Presentations form —
 
 The next step is for you to watch our meeting recordings and answer a few questions about them. Please complete the form at the link below:
 
-https://fillout.flolabsinnovations.com/meetingrecordings
+https://build.fillout.com/t/wqyLXfXzWGus
 
 John Hazlewood, our Founder and CEO, will personally review your responses. We look forward to hearing your thoughts!\
 """
@@ -87,11 +87,12 @@ _HR_ADDRESSES: set[str] = {
     "hr@flolabsinnovations.com",
     "hr@flolabsrd.com",
     "hr.flomad@gmail.com",      # the actual Gmail inbox being polled
-    "hr@flomadlabs.com",        # referenced in workflow doc (Zoom/Fillout logins)
+    "hr@flomadlabs.com",        # Fillout/Zoom login address
+    "hr@flomad.com",            # HubSpot login address — Fillout notifications go here
 }
 
 # Domains / addresses that should never receive an automated reply.
-_SKIP_DOMAINS: set[str] = {"hubspot.com"}
+_SKIP_DOMAINS: set[str] = {"hubspot.com", "linkedin.com", "notifications.hubspot.com"}
 _SKIP_ADDRESSES: set[str] = set()  # add specific sender addresses here if needed
 
 
@@ -271,6 +272,8 @@ def process_emails(config: Config, dry_run: bool, reply_target: int | None = Non
                 incoming.subject,
             )
             try:
+                form_type: str | None = None   # set below if is_fillout
+                effort: dict = {}              # set below if is_fillout
                 # ── Fillout submissions: effort check + workflow-driven reply ─
                 if is_fillout:
                     form_type = detect_form_type(incoming.subject, incoming.body_text)
@@ -318,8 +321,15 @@ def process_emails(config: Config, dry_run: bool, reply_target: int | None = Non
                     reply_body = llm.generate_reply(incoming)
                     sender.send_reply(incoming, reply_body, dry_run=dry_run)
 
-                # Classify funnel stage for Gmail labelling
-                stage = classify_stage(incoming, reply_body, config)
+                # Classify funnel stage for Gmail labelling.
+                # High-effort Fillout: advance to the next stage deterministically.
+                # Low-effort Fillout: stay at Screening (asked to resubmit).
+                # All other emails: LLM classifies.
+                if is_fillout and not effort.get("is_low_effort"):
+                    _form_type_for_stage = form_type
+                else:
+                    _form_type_for_stage = None
+                stage = classify_stage(incoming, reply_body, config, form_type=_form_type_for_stage)
                 log.info("Stage: %s for UID %s", stage, incoming.uid)
 
                 # Apply Gmail label (non-dry-run only)

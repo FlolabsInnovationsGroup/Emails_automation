@@ -1,4 +1,9 @@
-"""Gmail funnel label manager — creates and applies Prospect/* stage labels."""
+"""Gmail funnel label manager — creates and applies Prospect/* stage labels.
+
+Stages match the actual FloLabs HR recruitment funnel as defined in FUNNEL.md.
+The Gmail label names here must exactly match what is (or should be) in the
+hr.flomad@gmail.com inbox.
+"""
 
 from __future__ import annotations
 
@@ -8,27 +13,50 @@ from pathlib import Path
 
 logger = logging.getLogger("email_automation.funnel_labels")
 
-# ── Funnel stage constants (ordered) ────────────────────────────────────────
+# ── Funnel stage constants — must match FUNNEL.md exactly ───────────────────
 
-STAGE_NEW_APPLICANT        = "Prospect/01-New Applicant"
-STAGE_REPLIED              = "Prospect/02-Replied"
-STAGE_SCREENING            = "Prospect/03-Screening"
-STAGE_INTERVIEW_SCHEDULED  = "Prospect/04-Interview Scheduled"
-STAGE_INTERVIEW_DONE       = "Prospect/05-Interview Done"
-STAGE_OFFER_SENT           = "Prospect/06-Offer Sent"
-STAGE_HIRED                = "Prospect/07-Hired"
-STAGE_REJECTED             = "Prospect/08-Rejected"
+STAGE_NEW                       = "Prospect/01-New Applicant"
+STAGE_REPLIED                   = "Prospect/02-Replied"
+STAGE_INTERESTED                = "Prospect/03-Interested"      # confirmed interest, Form 1 sent
+STAGE_SCREENING                 = "Prospect/03-Screening"       # Form 1 submitted, reviewing
+STAGE_BEFORE_MEETING            = "Prospect/04-Before Meeting"  # Form 1 approved, Form 2 sent
+STAGE_SATURDAY_MEETING          = "Prospect/05-Saturday Meeting" # Form 2 approved, invited to orientation
+STAGE_ATTENDED                  = "Prospect/06-Attended"        # attended orientation
+STAGE_BRIEFLY_ATTENDED          = "Prospect/06-Briefly Attended"
+STAGE_NOT_ATTENDED              = "Prospect/06-Not Attended"
+STAGE_SECOND_MEETING            = "Prospect/07-Second Meeting"  # Form 3 approved, intro to Oliver
+STAGE_AGREEMENT_SENT            = "Prospect/08-Agreement Sent"
+STAGE_SIGNED_PAID               = "Prospect/09-Signed Paid"
+STAGE_SIGNED_NON_PAID           = "Prospect/09-Signed Non-Paid"
+STAGE_NOT_INTERESTED            = "Prospect/XX-Not Interested"
+STAGE_NO_ANSWER                 = "Prospect/XX-No Answer"
+STAGE_REJECTED                  = "Prospect/XX-Rejected"
 
 ALL_STAGES: list[str] = [
-    STAGE_NEW_APPLICANT,
+    STAGE_NEW,
     STAGE_REPLIED,
+    STAGE_INTERESTED,
     STAGE_SCREENING,
-    STAGE_INTERVIEW_SCHEDULED,
-    STAGE_INTERVIEW_DONE,
-    STAGE_OFFER_SENT,
-    STAGE_HIRED,
+    STAGE_BEFORE_MEETING,
+    STAGE_SATURDAY_MEETING,
+    STAGE_ATTENDED,
+    STAGE_BRIEFLY_ATTENDED,
+    STAGE_NOT_ATTENDED,
+    STAGE_SECOND_MEETING,
+    STAGE_AGREEMENT_SENT,
+    STAGE_SIGNED_PAID,
+    STAGE_SIGNED_NON_PAID,
+    STAGE_NOT_INTERESTED,
+    STAGE_NO_ANSWER,
     STAGE_REJECTED,
 ]
+
+# Map from form type → the stage to apply after a high-effort submission
+FORM_STAGE_MAP: dict[str, str] = {
+    "form_1_websites":   STAGE_BEFORE_MEETING,
+    "form_2_recordings": STAGE_SATURDAY_MEETING,
+    "form_3_masterclass": STAGE_SECOND_MEETING,
+}
 
 GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.labels",
                 "https://www.googleapis.com/auth/gmail.modify"]
@@ -137,7 +165,6 @@ class FunnelLabels:
             logger.warning("Unknown stage %r — skipping label.", stage)
             return
 
-        # Determine which Prospect/* labels are currently on the thread
         try:
             thread = self._service.users().threads().get(
                 userId="me", id=thread_id, format="minimal"
@@ -146,7 +173,7 @@ class FunnelLabels:
             logger.warning("Could not fetch thread %s: %s", thread_id, exc)
             return
 
-        # Collect existing Prospect/* label IDs to remove
+        # Remove existing Prospect/* labels, add the new one
         existing_ids: list[str] = []
         prospect_ids = set(self._label_ids.values())
         for msg in thread.get("messages", []):
