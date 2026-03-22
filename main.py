@@ -12,7 +12,7 @@ import sys
 from src.config import Config
 from src.email_reader import EmailReader
 from src.email_sender import EmailSender, send_queued_emails
-from src.fillout_parser import is_fillout_notification, extract_lead
+from src.fillout_parser import is_fillout_notification, extract_lead, extract_qa_pairs
 from src.funnel_labels import make_funnel_labels
 from src import ignore_list as ignore_list_mod
 from src.llm_classifier import classify_stage
@@ -23,6 +23,16 @@ from src.logger import setup_logger
 # IMPORTANT: this must include every address that forwards into the
 # polled Gmail inbox (hr.flomad@gmail.com), otherwise _all_ emails
 # will be skipped. See CLAUDE.md → "_is_processable() filter".
+_LOW_EFFORT_REPLY = """\
+Thank you for submitting your form — we really appreciate your interest in FloLabs!
+
+We noticed that some of your answers were quite brief and didn't quite reflect the level of detail we were hoping for. We ask everyone to take the time to genuinely engage with the questions, as John Hazlewood personally reviews each submission before deciding who to invite to his presentation.
+
+Could you please resubmit the form with more thoughtful, detailed answers? Specifically, we'd love to hear your genuine thoughts on the meetings, projects, and websites — what stood out to you, what you found interesting, and how you see yourself contributing.
+
+You can resubmit using the same link you used before. We look forward to reading your responses!\
+"""
+
 _HR_ADDRESSES: set[str] = {
     "hr@flolabsinnovations.com",
     "hr@flolabsrd.com",
@@ -185,7 +195,8 @@ def process_emails(config: Config, dry_run: bool, reply_target: int | None = Non
             # Fillout emails arrive FROM notifications@fillout.com, but the real
             # lead's name and email are embedded in the form body.  Patch the
             # IncomingEmail so salutation, To:, and LLM context are all correct.
-            if is_fillout_notification(incoming.sender_address, incoming.subject):
+            is_fillout = is_fillout_notification(incoming.sender_address, incoming.subject)
+            if is_fillout:
                 lead_name, lead_email = extract_lead(incoming.body_text)
                 if lead_email:
                     log.info(
@@ -210,7 +221,22 @@ def process_emails(config: Config, dry_run: bool, reply_target: int | None = Non
                 incoming.subject,
             )
             try:
-                reply_body = llm.generate_reply(incoming)
+                # ── Effort check for Fillout submissions ──────────────────────
+                if is_fillout:
+                    qa_pairs = extract_qa_pairs(incoming.body_text)
+                    effort = llm.evaluate_effort(qa_pairs)
+                    if effort.get("is_low_effort"):
+                        log.info(
+                            "UID %s flagged as low-effort (%.0f%% confidence) — %s",
+                            incoming.uid,
+                            effort.get("confidence", 0) * 100,
+                            effort.get("reason", ""),
+                        )
+                        reply_body = _LOW_EFFORT_REPLY
+                    else:
+                        reply_body = llm.generate_reply(incoming)
+                else:
+                    reply_body = llm.generate_reply(incoming)
 
                 # Classify funnel stage before sending
                 stage = classify_stage(incoming, reply_body, config)

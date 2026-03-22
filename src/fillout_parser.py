@@ -34,6 +34,15 @@ FILLOUT_SENDERS: set[str] = {
 # Subject prefix that Fillout uses for all form submission notifications.
 _FILLOUT_SUBJECT_RE = re.compile(r"new submission for your", re.IGNORECASE)
 
+# Fixed fields and boilerplate we skip when evaluating effort.
+_SKIP_LABELS_RE = re.compile(
+    r"^(first\s+name|last\s+name|e[\s-]?mail(?:\s+address)?|"
+    r"view\s+submission|below\s+is\s+a\s+copy|you\s+received|responses)$",
+    re.IGNORECASE,
+)
+# Answers that are always Yes/No confirmations — not real content.
+_BOILERPLATE_ANSWER_RE = re.compile(r"^(yes|no)$", re.IGNORECASE)
+
 
 def is_fillout_notification(sender_address: str, subject: str) -> bool:
     """Return True if this email is a Fillout form submission notification."""
@@ -63,6 +72,55 @@ def extract_lead(body_text: str) -> tuple[str | None, str | None]:
         email = None
 
     return first_name or None, email or None
+
+
+def extract_qa_pairs(body_text: str) -> list[tuple[str, str]]:
+    """Extract open-ended question/answer pairs from a Fillout notification body.
+
+    Returns a list of (question, answer) tuples, skipping fixed identity fields
+    (First name, Last name, Email) and Yes/No confirmation answers.
+    """
+    # Find the RESPONSES: block
+    responses_match = re.search(r"RESPONSES:\s*\n", body_text, re.IGNORECASE)
+    start = responses_match.end() if responses_match else 0
+    content = body_text[start:]
+
+    # Split into non-empty lines, collapsing multiple blank lines
+    lines = [ln.strip() for ln in content.splitlines()]
+
+    pairs: list[tuple[str, str]] = []
+    i = 0
+    while i < len(lines):
+        # Skip blank lines
+        if not lines[i]:
+            i += 1
+            continue
+
+        label = lines[i]
+        i += 1
+
+        # Collect the value: skip blank lines, then grab until next blank line
+        while i < len(lines) and not lines[i]:
+            i += 1
+
+        value_parts: list[str] = []
+        while i < len(lines) and lines[i]:
+            value_parts.append(lines[i])
+            i += 1
+        value = " ".join(value_parts).strip()
+
+        # Skip fixed/boilerplate fields
+        if _SKIP_LABELS_RE.match(label):
+            continue
+        if _BOILERPLATE_ANSWER_RE.match(value):
+            continue
+        # Skip if answer is empty or just whitespace
+        if not value:
+            continue
+
+        pairs.append((label, value))
+
+    return pairs
 
 
 def _extract_labelled_value(body: str, label_pattern: str) -> str | None:

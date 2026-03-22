@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from pathlib import Path
@@ -10,6 +11,33 @@ from .config import Config
 from .email_reader import IncomingEmail
 
 logger = logging.getLogger("email_automation.llm")
+
+_EFFORT_SYSTEM_PROMPT = """\
+You are evaluating whether a job applicant put genuine effort into answering open-ended
+questions on an internship application form.
+
+You will receive a list of question/answer pairs. Assess the overall effort and quality.
+
+Low-effort indicators (any of these = low effort):
+- Answers are random characters, gibberish, or keyboard mashing (e.g. "asd", "sdf", "fds")
+- Answers are one word or one very short sentence that clearly didn't engage with the question
+- Answers are copy-pasted generic filler with no specific reference to what was asked
+- Multiple answers appear identical or nearly identical
+- Answers do not reference anything from the actual content (meetings, projects, websites)
+
+High-effort indicators:
+- Answers are specific, detailed, and reference actual content from the form (project names,
+  meeting details, specific observations)
+- Answers show genuine engagement and personal opinion
+- Answers are written in full sentences with reasonable length
+
+Respond ONLY with valid JSON:
+{
+  "is_low_effort": true or false,
+  "confidence": 0.0-1.0,
+  "reason": "one sentence explaining the verdict"
+}
+"""
 
 DEFAULT_SYSTEM_PROMPT = """\
 You are Paula, a warm and professional HR assistant at Flomad, responding to job applicants.
@@ -107,33 +135,69 @@ class LLMProcessor:
 
         raise RuntimeError(f"LLM failed after {cfg.retry_attempts} attempts.") from last_exc
 
+    def evaluate_effort(self, qa_pairs: list[tuple[str, str]]) -> dict:
+        """Evaluate whether a Fillout form submission shows genuine effort.
+
+        Args:
+            qa_pairs: List of (question, answer) tuples from fillout_parser.extract_qa_pairs().
+
+        Returns:
+            Dict with keys: is_low_effort (bool), confidence (float), reason (str).
+            Falls back to is_low_effort=False on any error so genuine responses are never blocked.
+        """
+        if not qa_pairs:
+            return {"is_low_effort": False, "confidence": 0.0, "reason": "No Q&A pairs to evaluate."}
+
+        # Format the Q&A for the LLM
+        formatted = "\n\n".join(
+            f"Q: {q}\nA: {a}" for q, a in qa_pairs
+        )
+        user_message = f"Please evaluate the effort in these form answers:\n\n{formatted}"
+
+        try:
+            raw = self._call_llm_with_system(user_message, _EFFORT_SYSTEM_PROMPT)
+            result = json.loads(raw)
+            logger.info(
+                "Effort evaluation: low_effort=%s (confidence=%.0f%%) — %s",
+                result.get("is_low_effort"),
+                result.get("confidence", 0) * 100,
+                result.get("reason", ""),
+            )
+            return result
+        except Exception as exc:
+            logger.warning("Effort evaluation failed: %s — defaulting to high-effort.", exc)
+            return {"is_low_effort": False, "confidence": 0.0, "reason": f"Evaluation error: {exc}"}
+
     # ------------------------------------------------------------------
     # Provider dispatch
     # ------------------------------------------------------------------
 
     def _call_llm(self, user_message: str) -> str:
-        if self.config.llm_provider == "anthropic":
-            return self._call_anthropic(user_message)
-        return self._call_openai(user_message)
+        return self._call_llm_with_system(user_message, self._system_prompt)
 
-    def _call_anthropic(self, user_message: str) -> str:
+    def _call_llm_with_system(self, user_message: str, system_prompt: str) -> str:
+        if self.config.llm_provider == "anthropic":
+            return self._call_anthropic(user_message, system_prompt)
+        return self._call_openai(user_message, system_prompt)
+
+    def _call_anthropic(self, user_message: str, system_prompt: str) -> str:
         cfg = self.config
         response = self._client.messages.create(
             model=cfg.effective_llm_model,
             max_tokens=cfg.llm_max_tokens,
-            system=self._system_prompt,
+            system=system_prompt,
             messages=[{"role": "user", "content": user_message}],
         )
         return response.content[0].text
 
-    def _call_openai(self, user_message: str) -> str:
+    def _call_openai(self, user_message: str, system_prompt: str) -> str:
         cfg = self.config
         response = self._client.chat.completions.create(
             model=cfg.effective_llm_model,
             max_tokens=cfg.llm_max_tokens,
             temperature=cfg.llm_temperature,
             messages=[
-                {"role": "system", "content": self._system_prompt},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message},
             ],
         )
