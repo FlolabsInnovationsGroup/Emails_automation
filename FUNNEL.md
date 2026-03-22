@@ -206,6 +206,30 @@ Go through the statistics sheet and open each contact with status "Open":
 
 ---
 
+## ⚠️ LLM Reply Guardrails
+
+These are hard rules the LLM system prompt enforces. They must never be relaxed:
+
+| Rule | Reason |
+|---|---|
+| **Never ask for availability slots before Form 3 is submitted** | There is no individual call or interview before the Oliver 1-on-1. The only scheduled event before that is the group Saturday Orientation. |
+| **Never suggest a call or interview at early stages** | Early stages (New → Before Meeting → Saturday Meeting) are entirely asynchronous — forms and group session only. |
+| **The only time to ask for 2–3 slots is after Form 3 (Masterclass) is approved** | That's when the Oliver 1-on-1 is being scheduled. |
+| **Never invent next steps** | The process has a fixed sequence. Any deviation (extra calls, screening interviews, etc.) creates confusion and contradicts what other applicants are told. |
+
+**Correct next step by stage:**
+
+| Applicant's current stage | Correct next step to mention |
+|---|---|
+| New / Reminder stages | "Please confirm your interest and we'll send you the first form" |
+| Contacted (Form 1 sent) | "Please complete the Websites & Presentations form we sent you" |
+| Before Meeting (Form 2 sent) | "Please watch the recordings and complete the form" |
+| Saturday Meeting (invited) | "We look forward to seeing you at the orientation session on Saturday" |
+| Attended (Form 3 sent) | "Please complete the General Masterclass form" |
+| Second Meeting (Form 3 approved) | "Please share 2–3 slots for your call with Oliver" ← only here |
+
+---
+
 ## Common Email Scenarios (Manual Handling)
 
 | Situation | Action | Change stage? |
