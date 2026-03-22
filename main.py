@@ -96,6 +96,20 @@ _SKIP_DOMAINS: set[str] = {"hubspot.com", "linkedin.com", "notifications.hubspot
 _SKIP_ADDRESSES: set[str] = set()  # add specific sender addresses here if needed
 
 
+def _from_address(config: Config, form_type: str | None) -> str | None:
+    """Return the correct from-address for this form type.
+
+    Form 2 (Invitation Saturday) and Form 3 (Introduce Oliver) must come from
+    hr@flolabsrd.com per the workflow doc. Everything else uses the primary
+    configured address (hr@flolabsinnovations.com).
+
+    Returns None to let EmailSender use its default (config.email_address).
+    """
+    if form_type in ("form_2_recordings", "form_3_masterclass"):
+        return config.from_email_rd or None
+    return None
+
+
 def _is_processable(incoming) -> bool:
     """Return True if this email should be processed and replied to.
 
@@ -280,6 +294,8 @@ def process_emails(config: Config, dry_run: bool, reply_target: int | None = Non
                     qa_pairs = extract_qa_pairs(incoming.body_text)
                     effort = llm.evaluate_effort(qa_pairs)
 
+                    rd_from = _from_address(config, form_type)
+
                     if effort.get("is_low_effort"):
                         log.info(
                             "UID %s [%s] flagged as low-effort (%.0f%% confidence) — %s",
@@ -287,15 +303,14 @@ def process_emails(config: Config, dry_run: bool, reply_target: int | None = Non
                             effort.get("confidence", 0) * 100,
                             effort.get("reason", ""),
                         )
-                        # Pick the form-specific low-effort reply
                         if form_type == "form_2_recordings":
                             reply_body = _LOW_EFFORT_REPLY_FORM2
                         elif form_type == "form_3_masterclass":
                             reply_body = _LOW_EFFORT_REPLY_FORM3
                         else:
                             reply_body = _LOW_EFFORT_REPLY_FORM1
-
-                        sender.send_reply(incoming, reply_body, dry_run=dry_run)
+                        # Low-effort: use same from_addr as the high-effort path for consistency
+                        sender.send_reply(incoming, reply_body, dry_run=dry_run, from_addr=rd_from)
 
                     else:
                         log.info(
@@ -303,17 +318,16 @@ def process_emails(config: Config, dry_run: bool, reply_target: int | None = Non
                             incoming.uid, form_type,
                         )
                         if form_type == "form_3_masterclass":
-                            # Workflow: send "Introduce Oliver", CC oliver + john
                             reply_body = _GOOD_REPLY_FORM3
                             sender.send_reply(
                                 incoming, reply_body, dry_run=dry_run,
                                 cc=["oliver.abreu@flolabsrd.com", "john@flolabsrd.com"],
+                                from_addr=rd_from,
                             )
                         elif form_type == "form_2_recordings":
                             reply_body = _GOOD_REPLY_FORM2
-                            sender.send_reply(incoming, reply_body, dry_run=dry_run)
+                            sender.send_reply(incoming, reply_body, dry_run=dry_run, from_addr=rd_from)
                         else:
-                            # form_1_websites or unknown → send Form 2 link
                             reply_body = _GOOD_REPLY_FORM1
                             sender.send_reply(incoming, reply_body, dry_run=dry_run)
 

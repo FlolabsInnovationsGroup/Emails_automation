@@ -44,11 +44,13 @@ def _build_mime(
     incoming: IncomingEmail,
     reply_body: str,
     cc: list[str] | None = None,
+    from_addr: str | None = None,
 ) -> MIMEMultipart:
     msg = MIMEMultipart("alternative")
 
-    sender_display = config.sender_name or config.email_address
-    msg["From"] = f"{sender_display} <{config.email_address}>"
+    effective_addr = from_addr or config.email_address
+    sender_display = config.sender_name or effective_addr
+    msg["From"] = f"{sender_display} <{effective_addr}>"
     msg["To"] = incoming.sender_address
     if cc:
         msg["Cc"] = ", ".join(cc)
@@ -93,9 +95,10 @@ class EmailSender:
         reply_body: str,
         dry_run: bool = False,
         cc: list[str] | None = None,
+        from_addr: str | None = None,
     ) -> None:
         """Send or queue a reply. In dry_run mode, only logs preview."""
-        mime = _build_mime(self.config, incoming, reply_body, cc=cc)
+        mime = _build_mime(self.config, incoming, reply_body, cc=cc, from_addr=from_addr)
 
         if dry_run:
             self._preview(incoming, mime)
@@ -104,7 +107,7 @@ class EmailSender:
         if self.config.reply_mode == "queue":
             self._queue(incoming, mime, reply_body)
         else:
-            self._send_smtp(incoming, mime, cc=cc)
+            self._send_smtp(incoming, mime, cc=cc, from_addr=from_addr)
 
     # ------------------------------------------------------------------
     # Internals
@@ -147,9 +150,10 @@ class EmailSender:
         )
         logger.info("Queued reply for UID %s → %s", incoming.uid, eml_path)
 
-    def _send_smtp(self, incoming: IncomingEmail, mime: MIMEMultipart, cc: list[str] | None = None) -> None:
+    def _send_smtp(self, incoming: IncomingEmail, mime: MIMEMultipart, cc: list[str] | None = None, from_addr: str | None = None) -> None:
         cfg = self.config
         last_exc: Exception | None = None
+        effective_from = from_addr or cfg.email_address
         all_recipients = [incoming.sender_address] + (cc or [])
 
         for attempt in range(1, cfg.retry_attempts + 1):
@@ -165,7 +169,7 @@ class EmailSender:
                 with server:
                     server.login(cfg.email_address, cfg.email_password)
                     server.sendmail(
-                        cfg.email_address,
+                        effective_from,
                         all_recipients,
                         mime.as_bytes(),
                     )

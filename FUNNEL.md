@@ -52,10 +52,16 @@ Application submitted
 [8] NO ANSWER ──────────────────────────────────── "Last Reminder" (auto, from hr@flolabsrd.com)
         │
         │ At any stage 5–8: applicant submits Form 1 (Websites & Presentations)
-        │   → HubSpot automation sets lifecycle stage to "Interested"
+        │   → HubSpot automation IMMEDIATELY sets lifecycle stage to "Interested"
+        │   → HR reviews answers daily by filtering HubSpot: Lifecycle Stage = "Interested"
+        ▼
+[8b] INTERESTED (HubSpot intermediate) ─────────── No email sent yet — awaiting HR review
+        │   If answers are low-effort (yes/no/I don't know) → send low-effort reply, keep at Interested
+        │   If answers are high-effort → send BEFORE MEETING
         ▼
 [9] BEFORE MEETING ─────────────────────────────── "BEFORE MEETING" (AUTOMATED HERE)
         │                                           → sends Form 2 link (Meeting Recordings)
+        │                                           → From: hr@flolabsinnovations.com
         │ no reply in 4 days (form not submitted)
         ▼
 [10] REMINDER BEFORE MEETING ───────────────────── "REMINDER BEFORE MEETING" (auto)
@@ -67,14 +73,21 @@ Application submitted
 [12] NO ANSWER ─────────────────────────────────── "Last Reminder" (auto, from hr@flolabsrd.com)
         │
         │ At any stage 9–12: applicant submits Form 2 (Meeting Recordings)
+        │   → HR reviews answers daily (same Lifecycle Stage = "Interested" filter)
+        │   If answers are low-effort → send low-effort reply, keep at Before Meeting
+        │   If answers are high-effort → send Invitation Saturday
         ▼
 [13] SATURDAY MEETING ──────────────────────────── "Invitation Saturday" (AUTOMATED HERE)
         │                                           → invites to Orientation Session
         │                                           → ask for 2–3 availability slots
+        │                                           → From: hr@flolabsrd.com (NOT innovations)
         │
         │ After Orientation Session (Monday follow-up):
         ├─ attended full session ──────────────────── "Attended + Masterclass" (MANUAL)
         ├─ attended partial (missed Q&A) ──────────── "Briefly Attended + Q&A" (MANUAL, paste recording link)
+        │   ─ not attended ─────────────────────────── "Not attended" → lifecycle: NOT ATTENDED
+        │       │ no reply in 3 days
+        │       └─────────────────────────────────────── "Last Reminder" (auto) → NO ANSWER
         └─ attended < 1.5h ────────────────────────── "Briefly Attended" → lifecycle: BRIEFLY ATTENDED
         │
         ▼
@@ -82,6 +95,8 @@ Application submitted
         │                                           CC: oliver + john on all emails from here
         │
         │ applicant submits Form 3 (General Masterclass)
+        │   Trigger: lifecycle = "Attended" OR "Interested" (post-orientation)
+        │   HR reviews answers — low effort: ask to resubmit
         ▼
 [15] SECOND MEETING ────────────────────────────── "Introduce Oliver" (AUTOMATED HERE)
         │                                           CC: oliver.abreu@flolabsrd.com + john@flolabsrd.com
@@ -105,27 +120,36 @@ Application submitted
 ### Form 1 — Websites & Presentations
 - **Triggered by:** applicant replying "interested" → HR sends "Contacted Websites Form" manually
 - **Link sent in:** template "2 Contacted Websites Form"
-- **Fillout subject line:** `"New submission for your "Websites & Presentations" form"`
-- **Quality bar:** answers must be specific and reference actual projects/websites — not "yes/no/I don't know"
-- **On high-effort submission → automation sends:** "BEFORE MEETING" reply (Form 2 link)
-- **On low-effort submission → automation sends:** polite request to resubmit with more detail
+- **Fillout form ID:** `besSHDQpaHus`
+- **Fillout subject line:** `New submission for your "Websites & Presentations" form`
+- **Quality bar:** all questions must be answered — **except the last 4** (those belong to Form 2). Answers must be specific, referencing actual projects/websites. "Yes", "No", "I don't know" = low effort.
+- **HubSpot state when submission arrives:** Lifecycle = "Interested", Lead Status = "Contacted" / "Reminder after Contacted" / "Second reminder Contacted"
+- **On high-effort submission → automation sends:** "BEFORE MEETING" reply with Form 2 link, change stage to **Before Meeting**
+  - **From:** `hr@flolabsinnovations.com`
+- **On low-effort submission → automation sends:** polite request to resubmit — stage stays **Interested**
 
 ### Form 2 — Meeting Recordings
 - **Triggered by:** applicant submitting Form 1 (high effort)
 - **Link sent in:** "BEFORE MEETING" template
-- **Fillout subject line:** `"New submission for your "Meeting Recordings" form"`
-- **Quality bar:** answers must reference specific content from the meeting recordings (projects, modes, details)
-- **On high-effort submission → automation sends:** "Invitation Saturday" reply (invite to Orientation Session, ask 2–3 slots)
-- **On low-effort submission → automation sends:** request to resubmit, referencing the recordings
+- **Fillout form ID:** `wqyLXfXzWGus`
+- **Direct link:** `https://build.fillout.com/t/wqyLXfXzWGus`
+- **Fillout subject line:** `New submission for your "Meeting Recordings" form`
+- **Quality bar:** **all** questions must be answered, **including the last 4** (the meeting recording questions). Answers must reference specific content from recordings (project names, discussion topics, 3 robot control modes, etc.). "Yes"/"No" = low effort.
+- **HubSpot state when submission arrives:** Lifecycle = "Interested", Lead Status = "Before Meeting" / "Reminder Before Meeting" / "2nd Reminder Before Meeting"
+- **On high-effort submission → automation sends:** "Invitation Saturday" reply, change stage to **Saturday Meeting**
+  - **From:** `hr@flolabsrd.com` ← note: different from Form 1
+- **On low-effort submission → automation sends:** request to resubmit — stage stays **Before Meeting**
 
 ### Form 3 — General Masterclass
 - **Triggered by:** applicant attending Orientation Session
 - **Link sent in:** "Attended + Masterclass" or "16 links Interested Masterclass" template
-- **Fillout subject line:** `"New submission for your "General Masterclass" form"`
-- **Quality bar:** answers must show genuine reflection on the content presented
-- **On high-effort submission → automation sends:** "Introduce Oliver" reply
+- **Fillout subject line:** `New submission for your "General Masterclass" form`
+- **Quality bar:** answers must show genuine reflection on the content presented — not generic or copy-pasted
+- **HubSpot state when submission arrives:** Lifecycle = "Attended" **or** "Interested" (post-orientation path)
+- **On high-effort submission → automation sends:** "Introduce Oliver" reply, change stage to **Second Meeting**
+  - **From:** `hr@flolabsrd.com`
   - **CC:** `oliver.abreu@flolabsrd.com`, `john@flolabsrd.com`
-- **On low-effort submission → automation sends:** request to resubmit, acknowledge they're close
+- **On low-effort submission → automation sends:** request to resubmit — stage stays **Attended**
 
 ---
 
@@ -152,10 +176,15 @@ The evaluator fails **safe**: if the LLM call errors, the submission is treated 
 
 ## Email Sending Rules
 
-| Stage | From address | CC |
-|---|---|---|
-| Stages 1–13 (pre-orientation) | `hr@flolabsinnovations.com` | — |
-| Stages 14+ (post-orientation) | `hr@flolabsrd.com` | `oliver.abreu@flolabsrd.com`, `john@flolabsrd.com` |
+| Stage | Template | From address | CC |
+|---|---|---|---|
+| Stages 1–12 (up to and including Form 2 reminder cycle) | All early-stage templates | `hr@flolabsinnovations.com` | — |
+| Stage 13 — Form 2 approved | "Invitation Saturday" | `hr@flolabsrd.com` | — |
+| Stages 14+ (post-orientation) | All templates | `hr@flolabsrd.com` | `oliver.abreu@flolabsrd.com`, `john@flolabsrd.com` |
+
+> ⚠️ **Important boundary:** The "Invitation Saturday" email (Form 2 approval) must come from
+> `hr@flolabsrd.com`, not `hr@flolabsinnovations.com`. This is explicitly stated in the workflow doc.
+> The automation config must expose a second `from_email` for this stage (`FROM_EMAIL_RD`).
 
 - **All Fillout replies** are sent as a reply to the notification email (threading)
 - The `To:` address is **always the lead's email** extracted from the form body — never `notifications@fillout.com`
@@ -249,6 +278,17 @@ Go through the statistics sheet and open each contact with status "Open":
 |---|---|
 | [Attendance & Progress](https://docs.google.com/spreadsheets/d/1iGEwfTDoyzzl6-TL4S6b_9Q8Hm3MCz_eq4PfuRGI9Ys/edit) | Orientation attendance, masterclass submissions, Oliver meetings |
 | [Signed Interns](https://docs.google.com/spreadsheets/d/1LUXgk24h7Um2AXKdWk4S8c_X5X1DaVHZ6qlesVMKe1U/edit) | All signed interns, payment tracking, Toggl workspaces |
+
+---
+
+## Config Requirements
+
+The automation requires **two** from-addresses — add both to `.env`:
+
+```
+FROM_EMAIL=hr@flolabsinnovations.com        # Form 1 replies, general LLM replies
+FROM_EMAIL_RD=hr@flolabsrd.com             # Form 2 replies ("Invitation Saturday"), Form 3, post-orientation
+```
 
 ---
 

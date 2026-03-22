@@ -21,6 +21,9 @@ class Config:
     smtp_host: str = field(default_factory=lambda: os.getenv("SMTP_HOST", "smtp.gmail.com"))
     smtp_port: int = field(default_factory=lambda: int(os.getenv("SMTP_PORT", "587")))
     smtp_use_tls: bool = field(default_factory=lambda: os.getenv("SMTP_USE_TLS", "true").lower() == "true")
+    # Second from-address for Form 2 / post-orientation emails (hr@flolabsrd.com).
+    # Falls back to the primary email_address if not set.
+    from_email_rd: str = field(default_factory=lambda: os.getenv("FROM_EMAIL_RD", ""))
 
     # --- LLM ---
     llm_provider: str = field(default_factory=lambda: os.getenv("LLM_PROVIDER", "anthropic"))  # "anthropic" | "openai"
