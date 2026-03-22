@@ -20,16 +20,22 @@ logger = logging.getLogger("email_automation.sender")
 OUTBOX_DIR = Path("outbox")
 
 
+# Matches a sign-off only when it appears as a standalone closing block:
+# must be preceded by a blank line so it doesn't match "thank you" mid-paragraph.
 _SIGN_OFF_RE = re.compile(
-    r"\n+(?:best regards|warm regards|kind regards|sincerely|thanks|thank you|"
-    r"cheers|yours(?: truly| sincerely)?|with regards)"
-    r"[^\n]*(?:\n.*)*$",
+    r"\n{2,}(?:best regards|warm regards|kind regards|sincerely|"
+    r"cheers|yours(?: truly| sincerely)?|with regards|warm regards)"
+    r"[^\n]*(?:\n[^\n]*)*$",
     re.IGNORECASE,
 )
 
+# Matches a greeting line the LLM may have written (e.g. "Hi Jacob,")
+# so we can detect and skip adding our own on top.
+_GREETING_RE = re.compile(r"^Hi\b[^\n]*,?\s*\n", re.IGNORECASE)
+
 
 def _strip_sign_off(body: str) -> str:
-    """Remove any sign-off the LLM may have appended despite instructions."""
+    """Remove any sign-off closing block the LLM appended despite instructions."""
     return _SIGN_OFF_RE.sub("", body).rstrip()
 
 
@@ -52,11 +58,17 @@ def _build_mime(
         msg["In-Reply-To"] = incoming.message_id
         msg["References"] = incoming.message_id
 
-    first_name = incoming.sender.split()[0] if incoming.sender else ""
-    salutation = f"Hi {first_name}," if first_name else "Hi,"
-    clean_body = _strip_sign_off(reply_body)
+    clean_body = _strip_sign_off(reply_body.strip())
     sign_off = f"\n\nBest regards,\n{sender_display}"
-    full_body = f"{salutation}\n\n{clean_body}{sign_off}"
+
+    # If the LLM already starts with a greeting ("Hi Name,"), don't add another.
+    # Otherwise prepend one using the patched sender name.
+    if _GREETING_RE.match(clean_body):
+        full_body = f"{clean_body}{sign_off}"
+    else:
+        first_name = incoming.sender.split()[0] if incoming.sender else ""
+        salutation = f"Hi {first_name}," if first_name else "Hi,"
+        full_body = f"{salutation}\n\n{clean_body}{sign_off}"
 
     msg.attach(MIMEText(full_body, "plain", "utf-8"))
     return msg

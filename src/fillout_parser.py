@@ -5,6 +5,17 @@ Fillout sends notification emails to the HR inbox whenever a form is submitted.
 The email arrives FROM notifications@fillout.com, but the actual lead's name and
 email are embedded in the body as form field answers.
 
+Fillout body format (label on one line, value on the next):
+
+    First name
+    Jane
+
+    Last name
+    Doe
+
+    Email
+    jane@example.com
+
 This module detects those notification emails and extracts the real lead contact
 so the rest of the pipeline (salutation, To: address, LLM context) works
 correctly.
@@ -21,32 +32,7 @@ FILLOUT_SENDERS: set[str] = {
 }
 
 # Subject prefix that Fillout uses for all form submission notifications.
-_FILLOUT_SUBJECT_RE = re.compile(
-    r"new submission for your",
-    re.IGNORECASE,
-)
-
-# ── Field-label patterns ──────────────────────────────────────────────────────
-# Fillout notification bodies typically look like:
-#
-#   Full Name: Jane Doe
-#   Email: jane@example.com
-#   ...
-#
-# or with a separator line before each field.  We try broad patterns first and
-# fall back to narrower ones.
-
-_EMAIL_PATTERNS: list[re.Pattern] = [
-    # "Email: user@example.com"  (label on same line)
-    re.compile(r"(?:e[\s-]?mail|email address)\s*[:\-]\s*([\w.+\-]+@[\w.\-]+\.\w+)", re.IGNORECASE),
-    # Bare email anywhere in the body (last resort)
-    re.compile(r"\b([\w.+\-]+@(?!fillout\.com|hubspot\.com|notifications\.)[\w.\-]+\.\w+)\b"),
-]
-
-_NAME_PATTERNS: list[re.Pattern] = [
-    # "Full Name: Jane Doe" / "Name: Jane Doe" / "First Name: Jane"
-    re.compile(r"(?:full\s+name|first\s+name|your\s+name|name)\s*[:\-]\s*([A-Za-z][A-Za-z '\-\.]{1,60})", re.IGNORECASE),
-]
+_FILLOUT_SUBJECT_RE = re.compile(r"new submission for your", re.IGNORECASE)
 
 
 def is_fillout_notification(sender_address: str, subject: str) -> bool:
@@ -57,35 +43,46 @@ def is_fillout_notification(sender_address: str, subject: str) -> bool:
     )
 
 
-def extract_lead(body_text: str) -> tuple[str, str] | tuple[None, None]:
-    """Extract (name, email) of the actual lead from a Fillout notification body.
+def extract_lead(body_text: str) -> tuple[str | None, str | None]:
+    """Extract (first_name, email) of the actual lead from a Fillout body.
+
+    Fillout puts the field label on one line and the value on the next line,
+    with optional blank lines in between.  We match that pattern specifically.
 
     Returns (None, None) if extraction fails.
     """
-    email = _extract_email(body_text)
-    name = _extract_name(body_text)
-    if not email:
-        return None, None
-    return name, email
+    first_name = _extract_labelled_value(body_text, r"first\s+name")
+    email = _extract_labelled_value(body_text, r"e[\s-]?mail(?:\s+address)?")
+
+    # Sanity-check email
+    if email and ("@" not in email or "." not in email.split("@")[-1]):
+        email = None
+
+    # Reject platform email addresses leaking through
+    if email and any(d in email for d in ("fillout.com", "hubspot.com")):
+        email = None
+
+    return first_name or None, email or None
 
 
-def _extract_email(body: str) -> str | None:
-    for pattern in _EMAIL_PATTERNS:
-        match = pattern.search(body)
-        if match:
-            candidate = match.group(1).lower().strip()
-            # Sanity check: skip obviously invalid or platform addresses
-            if "@" in candidate and "." in candidate.split("@")[-1]:
-                return candidate
-    return None
+def _extract_labelled_value(body: str, label_pattern: str) -> str | None:
+    """
+    Find a Fillout-style label and return the value on the following non-blank line.
 
-
-def _extract_name(body: str) -> str | None:
-    for pattern in _NAME_PATTERNS:
-        match = pattern.search(body)
-        if match:
-            raw = match.group(1).strip().rstrip(".,;")
-            # Reject if it looks like a URL, sentence, or is too short
-            if len(raw) >= 2 and " " not in raw or len(raw.split()) <= 5:
-                return raw
+    Pattern:
+        <blank lines>
+        <label>          ← matched by label_pattern (case-insensitive, full line)
+        <blank lines>
+        <value>          ← the line we want
+    """
+    # Match: label on its own line, then skip blank lines, then capture the value line
+    pattern = re.compile(
+        r"^[ \t]*" + label_pattern + r"[ \t]*$"   # label line
+        r"(?:\s*\n)+"                               # one or more blank/whitespace-only lines
+        r"[ \t]*([^\n\r]+)",                        # value line (captured)
+        re.IGNORECASE | re.MULTILINE,
+    )
+    match = pattern.search(body)
+    if match:
+        return match.group(1).strip()
     return None
