@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import smtplib
 import time
 from datetime import datetime
@@ -17,6 +18,19 @@ from .email_reader import IncomingEmail
 logger = logging.getLogger("email_automation.sender")
 
 OUTBOX_DIR = Path("outbox")
+
+
+_SIGN_OFF_RE = re.compile(
+    r"\n+(?:best regards|warm regards|kind regards|sincerely|thanks|thank you|"
+    r"cheers|yours(?: truly| sincerely)?|with regards)"
+    r"[^\n]*(?:\n.*)*$",
+    re.IGNORECASE,
+)
+
+
+def _strip_sign_off(body: str) -> str:
+    """Remove any sign-off the LLM may have appended despite instructions."""
+    return _SIGN_OFF_RE.sub("", body).rstrip()
 
 
 def _build_mime(
@@ -38,9 +52,11 @@ def _build_mime(
         msg["In-Reply-To"] = incoming.message_id
         msg["References"] = incoming.message_id
 
-    salutation = f"Hi {incoming.sender.split()[0]}," if incoming.sender else "Hi,"
+    first_name = incoming.sender.split()[0] if incoming.sender else ""
+    salutation = f"Hi {first_name}," if first_name else "Hi,"
+    clean_body = _strip_sign_off(reply_body)
     sign_off = f"\n\nBest regards,\n{sender_display}"
-    full_body = f"{salutation}\n\n{reply_body}{sign_off}"
+    full_body = f"{salutation}\n\n{clean_body}{sign_off}"
 
     msg.attach(MIMEText(full_body, "plain", "utf-8"))
     return msg

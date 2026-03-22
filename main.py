@@ -12,6 +12,7 @@ import sys
 from src.config import Config
 from src.email_reader import EmailReader
 from src.email_sender import EmailSender, send_queued_emails
+from src.fillout_parser import is_fillout_notification, extract_lead
 from src.funnel_labels import make_funnel_labels
 from src import ignore_list as ignore_list_mod
 from src.llm_classifier import classify_stage
@@ -179,6 +180,28 @@ def process_emails(config: Config, dry_run: bool, reply_target: int | None = Non
                     incoming.cc,
                 )
                 continue
+
+            # ── Fillout notification: rewrite sender to the actual lead ──────────
+            # Fillout emails arrive FROM notifications@fillout.com, but the real
+            # lead's name and email are embedded in the form body.  Patch the
+            # IncomingEmail so salutation, To:, and LLM context are all correct.
+            if is_fillout_notification(incoming.sender_address, incoming.subject):
+                lead_name, lead_email = extract_lead(incoming.body_text)
+                if lead_email:
+                    log.info(
+                        "Fillout notification UID %s — re-addressing to lead: %s <%s>",
+                        incoming.uid, lead_name or "(unknown name)", lead_email,
+                    )
+                    incoming.sender_address = lead_email
+                    if lead_name:
+                        incoming.sender = lead_name
+                else:
+                    log.warning(
+                        "Fillout notification UID %s — could not extract lead email; "
+                        "skipping to avoid replying to Fillout.",
+                        incoming.uid,
+                    )
+                    continue
 
             log.info(
                 "Processing email UID %s | From: %s | Subject: %s",
