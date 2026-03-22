@@ -52,6 +52,35 @@ def is_fillout_notification(sender_address: str, subject: str) -> bool:
     )
 
 
+def detect_form_type(subject: str, body_text: str) -> str:
+    """Detect which Fillout form was submitted.
+
+    Returns one of:
+      "form_1_websites"    — Websites & Presentations
+      "form_2_recordings"  — Meeting Recordings
+      "form_3_masterclass" — General Masterclass
+      "unknown"
+    """
+    subject_lower = subject.lower()
+    if "masterclass" in subject_lower or "general masterclass" in subject_lower:
+        return "form_3_masterclass"
+    if "meeting recording" in subject_lower:
+        return "form_2_recordings"
+    if "website" in subject_lower or "presentation" in subject_lower:
+        return "form_1_websites"
+
+    # Fall back to body scan (form title appears in the first few lines)
+    body_head = body_text[:500].lower()
+    if "masterclass" in body_head:
+        return "form_3_masterclass"
+    if "meeting recording" in body_head:
+        return "form_2_recordings"
+    if "website" in body_head or "presentation" in body_head:
+        return "form_1_websites"
+
+    return "unknown"
+
+
 def extract_lead(body_text: str) -> tuple[str | None, str | None]:
     """Extract (first_name, email) of the actual lead from a Fillout body.
 

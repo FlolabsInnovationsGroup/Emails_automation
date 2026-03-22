@@ -12,7 +12,7 @@ import sys
 from src.config import Config
 from src.email_reader import EmailReader
 from src.email_sender import EmailSender, send_queued_emails
-from src.fillout_parser import is_fillout_notification, extract_lead, extract_qa_pairs
+from src.fillout_parser import is_fillout_notification, extract_lead, extract_qa_pairs, detect_form_type
 from src.funnel_labels import make_funnel_labels
 from src import ignore_list as ignore_list_mod
 from src.llm_classifier import classify_stage
@@ -23,14 +23,64 @@ from src.logger import setup_logger
 # IMPORTANT: this must include every address that forwards into the
 # polled Gmail inbox (hr.flomad@gmail.com), otherwise _all_ emails
 # will be skipped. See CLAUDE.md → "_is_processable() filter".
-_LOW_EFFORT_REPLY = """\
-Thank you for submitting your form — we really appreciate your interest in FloLabs!
+# ── Per-form low-effort reply templates ──────────────────────────────────────
+_LOW_EFFORT_REPLY_FORM1 = """\
+Thank you for submitting the Websites & Presentations form — we appreciate you taking the time!
 
-We noticed that some of your answers were quite brief and didn't quite reflect the level of detail we were hoping for. We ask everyone to take the time to genuinely engage with the questions, as John Hazlewood personally reviews each submission before deciding who to invite to his presentation.
+After reviewing your answers, we noticed that some responses were quite brief and didn't reflect the level of genuine engagement we were hoping for. John Hazlewood personally reviews every submission before deciding who moves forward, so it's important that your answers really show that you explored our projects and websites.
 
-Could you please resubmit the form with more thoughtful, detailed answers? Specifically, we'd love to hear your genuine thoughts on the meetings, projects, and websites — what stood out to you, what you found interesting, and how you see yourself contributing.
+Could you please resubmit the form with more thoughtful, detailed answers? We'd love to hear your genuine impressions of our projects, websites, and the AI Travel Agent — what stood out to you, what you'd improve, and how you see yourself contributing.
 
-You can resubmit using the same link you used before. We look forward to reading your responses!\
+You can resubmit using the same link as before. We look forward to reading your responses!\
+"""
+
+_LOW_EFFORT_REPLY_FORM2 = """\
+Thank you for submitting the Meeting Recordings form — we appreciate your interest in FloLabs!
+
+After reviewing your answers, we noticed that some responses were quite short and didn't demonstrate that you had watched and engaged with the recordings in depth. John Hazlewood personally reviews every submission, and he's looking for candidates who show genuine curiosity and attention to detail.
+
+Could you please resubmit the form with more comprehensive answers? Specifically, we'd love to see your real thoughts on the projects and discussions in the meetings — what you found interesting, what could be improved, and how you'd contribute.
+
+You can resubmit using the same link as before. We look forward to your more detailed responses!\
+"""
+
+_LOW_EFFORT_REPLY_FORM3 = """\
+Thank you for completing the General Masterclass form — we're glad you've reached this stage!
+
+After reviewing your answers, we noticed that some responses didn't quite reflect the depth of engagement we were hoping for. At this stage of the process, John Hazlewood reviews each submission carefully before scheduling a one-on-one with Oliver, so it's important that your answers show genuine reflection.
+
+Could you please resubmit the form with more thoughtful, detailed responses that reflect your real impressions and insights?
+
+You can resubmit using the same link as before. We look forward to reading your full responses!\
+"""
+
+# ── Per-form replies for high-effort submissions ──────────────────────────────
+# These mirror the manual workflow templates described in the SOP.
+
+_GOOD_REPLY_FORM1 = """\
+Thank you for your thoughtful responses to the Websites & Presentations form — it's great to see your genuine engagement with our projects!
+
+The next step is for you to watch our meeting recordings and answer a few questions about them. Please complete the form at the link below:
+
+https://fillout.flolabsinnovations.com/meetingrecordings
+
+John Hazlewood, our Founder and CEO, will personally review your responses. We look forward to hearing your thoughts!\
+"""
+
+_GOOD_REPLY_FORM2 = """\
+Thank you for completing the Meeting Recordings form — your responses show real engagement with our work, and we appreciate it!
+
+We'd like to invite you to our next Orientation Session, where John Hazlewood, our Founder and CEO, will present FloLabs' vision and current projects in detail.
+
+Please reply with 2–3 time slots when you're available so we can confirm your spot. We look forward to meeting you!\
+"""
+
+_GOOD_REPLY_FORM3 = """\
+Thank you so much for completing the General Masterclass form — your responses show real depth and commitment!
+
+John Hazlewood has reviewed your submission and we'd like to move you forward to the next step: a one-on-one meeting with Oliver Abreu, our Head of R&D, who is CC'd on this email.
+
+Please reply with 2–3 time slots when you're available in the coming week so we can schedule your call with Oliver. We're excited about the potential of working with you!\
 """
 
 _HR_ADDRESSES: set[str] = {
@@ -221,28 +271,56 @@ def process_emails(config: Config, dry_run: bool, reply_target: int | None = Non
                 incoming.subject,
             )
             try:
-                # ── Effort check for Fillout submissions ──────────────────────
+                # ── Fillout submissions: effort check + workflow-driven reply ─
                 if is_fillout:
+                    form_type = detect_form_type(incoming.subject, incoming.body_text)
                     qa_pairs = extract_qa_pairs(incoming.body_text)
                     effort = llm.evaluate_effort(qa_pairs)
+
                     if effort.get("is_low_effort"):
                         log.info(
-                            "UID %s flagged as low-effort (%.0f%% confidence) — %s",
-                            incoming.uid,
+                            "UID %s [%s] flagged as low-effort (%.0f%% confidence) — %s",
+                            incoming.uid, form_type,
                             effort.get("confidence", 0) * 100,
                             effort.get("reason", ""),
                         )
-                        reply_body = _LOW_EFFORT_REPLY
+                        # Pick the form-specific low-effort reply
+                        if form_type == "form_2_recordings":
+                            reply_body = _LOW_EFFORT_REPLY_FORM2
+                        elif form_type == "form_3_masterclass":
+                            reply_body = _LOW_EFFORT_REPLY_FORM3
+                        else:
+                            reply_body = _LOW_EFFORT_REPLY_FORM1
+
+                        sender.send_reply(incoming, reply_body, dry_run=dry_run)
+
                     else:
-                        reply_body = llm.generate_reply(incoming)
+                        log.info(
+                            "UID %s [%s] high-effort — sending workflow reply.",
+                            incoming.uid, form_type,
+                        )
+                        if form_type == "form_3_masterclass":
+                            # Workflow: send "Introduce Oliver", CC oliver + john
+                            reply_body = _GOOD_REPLY_FORM3
+                            sender.send_reply(
+                                incoming, reply_body, dry_run=dry_run,
+                                cc=["oliver.abreu@flolabsrd.com", "john@flolabsrd.com"],
+                            )
+                        elif form_type == "form_2_recordings":
+                            reply_body = _GOOD_REPLY_FORM2
+                            sender.send_reply(incoming, reply_body, dry_run=dry_run)
+                        else:
+                            # form_1_websites or unknown → send Form 2 link
+                            reply_body = _GOOD_REPLY_FORM1
+                            sender.send_reply(incoming, reply_body, dry_run=dry_run)
+
                 else:
                     reply_body = llm.generate_reply(incoming)
+                    sender.send_reply(incoming, reply_body, dry_run=dry_run)
 
-                # Classify funnel stage before sending
+                # Classify funnel stage for Gmail labelling
                 stage = classify_stage(incoming, reply_body, config)
                 log.info("Stage: %s for UID %s", stage, incoming.uid)
-
-                sender.send_reply(incoming, reply_body, dry_run=dry_run)
 
                 # Apply Gmail label (non-dry-run only)
                 if not dry_run and funnel and funnel.enabled and incoming.message_id:

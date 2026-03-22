@@ -43,12 +43,15 @@ def _build_mime(
     config: Config,
     incoming: IncomingEmail,
     reply_body: str,
+    cc: list[str] | None = None,
 ) -> MIMEMultipart:
     msg = MIMEMultipart("alternative")
 
     sender_display = config.sender_name or config.email_address
     msg["From"] = f"{sender_display} <{config.email_address}>"
     msg["To"] = incoming.sender_address
+    if cc:
+        msg["Cc"] = ", ".join(cc)
     msg["Subject"] = (
         incoming.subject
         if incoming.subject.lower().startswith("re:")
@@ -61,7 +64,7 @@ def _build_mime(
     clean_body = _strip_sign_off(reply_body.strip())
     sign_off = f"\n\nBest regards,\n{sender_display}"
 
-    # If the LLM already starts with a greeting ("Hi Name,"), don't add another.
+    # If the reply already starts with a greeting ("Hi Name,"), don't add another.
     # Otherwise prepend one using the patched sender name.
     if _GREETING_RE.match(clean_body):
         full_body = f"{clean_body}{sign_off}"
@@ -89,9 +92,10 @@ class EmailSender:
         incoming: IncomingEmail,
         reply_body: str,
         dry_run: bool = False,
+        cc: list[str] | None = None,
     ) -> None:
         """Send or queue a reply. In dry_run mode, only logs preview."""
-        mime = _build_mime(self.config, incoming, reply_body)
+        mime = _build_mime(self.config, incoming, reply_body, cc=cc)
 
         if dry_run:
             self._preview(incoming, mime)
@@ -100,7 +104,7 @@ class EmailSender:
         if self.config.reply_mode == "queue":
             self._queue(incoming, mime, reply_body)
         else:
-            self._send_smtp(incoming, mime)
+            self._send_smtp(incoming, mime, cc=cc)
 
     # ------------------------------------------------------------------
     # Internals
@@ -108,11 +112,13 @@ class EmailSender:
 
     def _preview(self, incoming: IncomingEmail, mime: MIMEMultipart) -> None:
         separator = "─" * 60
+        cc_line = f"\nCc: {mime['Cc']}" if mime.get("Cc") else ""
         logger.info(
-            "\n%s\n[DRY RUN] Reply preview for UID %s\nTo: %s\nSubject: %s\n\n%s\n%s",
+            "\n%s\n[DRY RUN] Reply preview for UID %s\nTo: %s%s\nSubject: %s\n\n%s\n%s",
             separator,
             incoming.uid,
             mime["To"],
+            cc_line,
             mime["Subject"],
             mime.get_payload(0).get_payload(decode=True).decode("utf-8", errors="replace"),  # type: ignore[union-attr]
             separator,
@@ -141,9 +147,10 @@ class EmailSender:
         )
         logger.info("Queued reply for UID %s → %s", incoming.uid, eml_path)
 
-    def _send_smtp(self, incoming: IncomingEmail, mime: MIMEMultipart) -> None:
+    def _send_smtp(self, incoming: IncomingEmail, mime: MIMEMultipart, cc: list[str] | None = None) -> None:
         cfg = self.config
         last_exc: Exception | None = None
+        all_recipients = [incoming.sender_address] + (cc or [])
 
         for attempt in range(1, cfg.retry_attempts + 1):
             try:
@@ -159,13 +166,13 @@ class EmailSender:
                     server.login(cfg.email_address, cfg.email_password)
                     server.sendmail(
                         cfg.email_address,
-                        [incoming.sender_address],
+                        all_recipients,
                         mime.as_bytes(),
                     )
 
                 logger.info(
                     "Reply sent to %s (subject: %s).",
-                    incoming.sender_address,
+                    ", ".join(all_recipients),
                     mime["Subject"],
                 )
                 return
