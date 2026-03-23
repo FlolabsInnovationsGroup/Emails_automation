@@ -256,7 +256,7 @@ These are hard rules the LLM system prompt enforces. They must never be relaxed:
 | Role | Detail |
 |---|---|
 | Founder & CEO | John Hazlewood — `john@flolabsrd.com` |
-| Head of R&D | Oliver Abreu — `oliver.abreu@flolabsrd.com` |
+| Former intern / 1-on-1 interviewer | Oliver Abreu — `oliver.abreu@flolabsrd.com` — completed the FloLabs internship program; conducts the 1-on-1 with applicants after Form 3, can answer first-hand questions about the internship experience |
 | HR inbox (primary) | `hr@flolabsinnovations.com` |
 | HR inbox (reminders) | `hr@flolabsrd.com` |
 | HR Gmail | `hr.flomad@gmail.com` |
@@ -342,6 +342,11 @@ This codebase handles **inbound email triage** for the HR Gmail inbox (`hr.floma
 | Generates LLM reply for non-Fillout emails | `src/llm_processor.py → generate_reply()` |
 | Sends/queues/previews outbound emails | `src/email_sender.py` |
 | Applies Gmail funnel labels | `src/funnel_labels.py` |
+
+**Emails the automation never replies to (skipped silently):**
+- Any sender from `flolabsrd.com`, `flolabsinnovations.com`, `flomadlabs.com`, `flomad.com` — internal staff (John, Oliver, etc.) forwarded back into the inbox
+- `hubspot.com`, `linkedin.com` — platform notifications
+- Any address in `_HR_ADDRESSES` — our own outbound addresses bouncing back
 
 **What it does NOT do (still manual or HubSpot):**
 - Initial outreach sequences (stages 1–4 reminders) — handled by HubSpot workflows

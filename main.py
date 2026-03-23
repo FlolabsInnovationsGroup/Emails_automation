@@ -98,7 +98,9 @@ _HR_ADDRESSES: set[str] = {
 
 # Domains / addresses that should never receive an automated reply.
 _SKIP_DOMAINS: set[str] = {"hubspot.com", "linkedin.com", "notifications.hubspot.com"}
-_SKIP_ADDRESSES: set[str] = set()  # add specific sender addresses here if needed
+# Internal FloLabs domains — emails from these are John, Oliver, or other staff
+# forwarded back into the inbox. Never auto-reply to them.
+_SKIP_INTERNAL_DOMAINS: set[str] = {"flolabsrd.com", "flolabsinnovations.com", "flomadlabs.com", "flomad.com"}
 
 
 def _from_address(config: Config, form_type: str | None) -> str | None:
@@ -140,6 +142,10 @@ def _is_processable(incoming) -> bool:
     if domain in _SKIP_DOMAINS:
         return False
     if sender in _SKIP_ADDRESSES:
+        return False
+
+    # Never auto-reply to internal FloLabs staff addresses
+    if domain in _SKIP_INTERNAL_DOMAINS:
         return False
 
     return True
