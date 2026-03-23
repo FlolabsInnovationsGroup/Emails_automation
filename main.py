@@ -141,8 +141,6 @@ def _is_processable(incoming) -> bool:
     domain = sender.split("@")[-1] if "@" in sender else ""
     if domain in _SKIP_DOMAINS:
         return False
-    if sender in _SKIP_ADDRESSES:
-        return False
 
     # Never auto-reply to internal FloLabs staff addresses
     if domain in _SKIP_INTERNAL_DOMAINS:
