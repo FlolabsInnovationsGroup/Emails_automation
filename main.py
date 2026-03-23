@@ -72,8 +72,13 @@ Thank you for completing the Meeting Recordings form — your responses show rea
 
 We'd like to invite you to our next Orientation Session, where John Hazlewood, our Founder and CEO, will present FloLabs' vision and current projects in detail.
 
-Please reply with 2–3 time slots when you're available so we can confirm your spot. We look forward to meeting you!\
+You can join using the link below — the session takes place every Saturday:
+https://us06web.zoom.us/j/82809015394?pwd=eN4AWg4nT3DXZqPPE3OwqDQmjrgGQ2.1
+
+We look forward to seeing you there!\
 """
+
+ORIENTATION_ZOOM_LINK = "https://us06web.zoom.us/j/82809015394?pwd=eN4AWg4nT3DXZqPPE3OwqDQmjrgGQ2.1"
 
 _GOOD_REPLY_FORM3 = """\
 Thank you so much for completing the General Masterclass form — your responses show real depth and commitment!

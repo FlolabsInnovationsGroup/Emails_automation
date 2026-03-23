@@ -86,6 +86,8 @@ Application submitted
         ├─ attended full session ──────────────────── "Attended + Masterclass" (MANUAL)
         ├─ attended partial (missed Q&A) ──────────── "Briefly Attended + Q&A" (MANUAL, paste recording link)
         │   ─ not attended ─────────────────────────── "Not attended" → lifecycle: NOT ATTENDED
+        │       │                                        include re-invite link:
+        │       │                                        https://us06web.zoom.us/j/82809015394?pwd=eN4AWg4nT3DXZqPPE3OwqDQmjrgGQ2.1
         │       │ no reply in 3 days
         │       └─────────────────────────────────────── "Last Reminder" (auto) → NO ANSWER
         └─ attended < 1.5h ────────────────────────── "Briefly Attended" → lifecycle: BRIEFLY ATTENDED
@@ -277,7 +279,9 @@ These are hard rules the LLM system prompt enforces. They must never be relaxed:
    - Full session → send "Attended + Masterclass"
    - Partial (missed Q&A) → send "Briefly Attended + Q&A" (paste recording link)
    - < 1.5 hours → set lifecycle to **Briefly Attended**, send "Briefly Attended"
-6. For all contacts still at **Saturday Meeting** (did not attend) → send "Not attended", change to **Not Attended**
+6. For all contacts still at **Saturday Meeting** (did not attend) → send "Not attended", change to **Not Attended**.
+   Include the re-invite link in the email so they can join the next session:
+   `https://us06web.zoom.us/j/82809015394?pwd=eN4AWg4nT3DXZqPPE3OwqDQmjrgGQ2.1`
 
 **CC oliver + john on every email sent after the Orientation Session.**
 
@@ -287,12 +291,17 @@ These are hard rules the LLM system prompt enforces. They must never be relaxed:
 
 | Purpose | Link |
 |---|---|
+| **Orientation Session (live / re-invite)** | **https://us06web.zoom.us/j/82809015394?pwd=eN4AWg4nT3DXZqPPE3OwqDQmjrgGQ2.1** |
 | Orientation recording (main) | https://us06web.zoom.us/rec/share/bB2nJy3Mkl6jdqNyOg0qpfZg8Zj9thY3DmA5bJ1qimM5H-VrfKt6I3xW-JlGcmHv.9t5JLfDzF1F1gvwl |
 | Read.ai meeting link | https://app.read.ai/analytics/meetings/01K40HF517C9813761J0JS0CKE |
 | Meeting Recordings form recording | https://us06web.zoom.us/rec/share/0L1tyq8pFqZaU12ajsLeZ4PF4tKWVDfwTmk6m-K3MMOfIF2-mcD31W8HaBLeIvFC.rdbRNcuFICRT9KzF |
 | Daily tasks recording | https://us06web.zoom.us/rec/share/i80cWWqzqS99bph3Gz7_7J38W7HKcAhbD03H61fQCum_CrOTB7bVeCF-WvqQXNmh.ejmrxPBld5KNmSVW |
 | Oliver 1-on-1 recording | https://us06web.zoom.us/rec/share/2Jfw41V8qM_YYo1RkmPQHxa9M5dGESHkPzPpTRblmS1xc_HO9h96LoS6scgx5MAm.T5WAqoR7iIzQERZo |
 | Oliver 1-on-1 (Read.ai) | https://app.read.ai/analytics/meetings/01KFX9YDWXTZ27434AXB5PJCBP |
+
+> The **live session link** is the standing Zoom room used for every Saturday Orientation.
+> Use it when re-inviting someone who missed a previous session or when sending the
+> "Not attended" follow-up.
 
 ---
 
