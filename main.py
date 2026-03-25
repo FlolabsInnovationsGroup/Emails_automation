@@ -82,6 +82,26 @@ We look forward to seeing you there!\
 
 ORIENTATION_ZOOM_LINK = "https://us06web.zoom.us/j/82809015394?pwd=eN4AWg4nT3DXZqPPE3OwqDQmjrgGQ2.1"
 
+# CC list for all emails from the orientation invite onwards.
+# Oliver and John must be copied on every email at this stage and beyond.
+_CC_POST_ORIENTATION: list[str] = [
+    "oliver.abreu@flolabsrd.com",
+    "john@flolabsrd.com",
+]
+
+# Stages at which Oliver + John should be CC'd on all outgoing replies.
+# This includes the orientation invitation itself and everything after.
+from src.funnel_labels import (
+    STAGE_SATURDAY_MEETING, STAGE_ATTENDED, STAGE_BRIEFLY_ATTENDED,
+    STAGE_NOT_ATTENDED, STAGE_SECOND_MEETING, STAGE_AGREEMENT_SENT,
+    STAGE_SIGNED_PAID, STAGE_SIGNED_NON_PAID,
+)
+_CC_STAGES: set[str] = {
+    STAGE_SATURDAY_MEETING, STAGE_ATTENDED, STAGE_BRIEFLY_ATTENDED,
+    STAGE_NOT_ATTENDED, STAGE_SECOND_MEETING, STAGE_AGREEMENT_SENT,
+    STAGE_SIGNED_PAID, STAGE_SIGNED_NON_PAID,
+}
+
 _GOOD_REPLY_FORM3 = """\
 Thank you so much for completing the General Masterclass form — your responses show real depth and commitment!
 
@@ -412,12 +432,14 @@ def process_emails(config: Config, dry_run: bool, reply_target: int | None = Non
                             reply_body = _GOOD_REPLY_FORM3
                             sender.send_reply(
                                 incoming, reply_body, dry_run=dry_run,
-                                cc=["oliver.abreu@flolabsrd.com", "john@flolabsrd.com"],
-                                from_addr=rd_from,
+                                cc=_CC_POST_ORIENTATION, from_addr=rd_from,
                             )
                         elif form_type == "form_2_recordings":
                             reply_body = _GOOD_REPLY_FORM2
-                            sender.send_reply(incoming, reply_body, dry_run=dry_run, from_addr=rd_from)
+                            sender.send_reply(
+                                incoming, reply_body, dry_run=dry_run,
+                                cc=_CC_POST_ORIENTATION, from_addr=rd_from,
+                            )
                         else:
                             reply_body = _GOOD_REPLY_FORM1
                             sender.send_reply(incoming, reply_body, dry_run=dry_run)
@@ -455,17 +477,29 @@ def process_emails(config: Config, dry_run: bool, reply_target: int | None = Non
                             reader.mark_as_read(incoming.uid)
                         continue
 
-                    sender.send_reply(incoming, reply_body, dry_run=dry_run)
+                    # Classify stage BEFORE sending so we can decide on CC.
+                    # For non-Fillout emails the LLM classifies the stage.
+                    stage = classify_stage(incoming, reply_body, config, form_type=None)
+                    log.info("Pre-send stage: %s for UID %s", stage, incoming.uid)
+
+                    # CC Oliver + John on orientation invite and all post-orientation emails
+                    cc_list = _CC_POST_ORIENTATION if stage in _CC_STAGES else None
+                    from_addr = config.from_email_rd if stage in _CC_STAGES else None
+
+                    sender.send_reply(incoming, reply_body, dry_run=dry_run,
+                                      cc=cc_list, from_addr=from_addr)
 
                 # Classify funnel stage for Gmail labelling.
                 # High-effort Fillout: advance to the next stage deterministically.
                 # Low-effort Fillout: stay at Screening (asked to resubmit).
-                # All other emails: LLM classifies.
+                # Non-Fillout: already classified above, reuse the result.
                 if is_fillout and not effort.get("is_low_effort"):
                     _form_type_for_stage = form_type
                 else:
                     _form_type_for_stage = None
-                stage = classify_stage(incoming, reply_body, config, form_type=_form_type_for_stage)
+
+                if is_fillout:
+                    stage = classify_stage(incoming, reply_body, config, form_type=_form_type_for_stage)
                 log.info("Stage: %s for UID %s", stage, incoming.uid)
 
                 # Apply Gmail label (non-dry-run only)

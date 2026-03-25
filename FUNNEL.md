@@ -14,8 +14,15 @@ Every stage has a specific email template and a corresponding HubSpot lifecycle
 stage + lead status. The automation mirrors this exactly.
 
 Emails before the Orientation Session are sent from **hr@flolabsinnovations.com**.
-Emails from the Orientation Session onwards are sent from **hr@flolabsrd.com**,
-and **always CC oliver.abreu@flolabsrd.com and john@flolabsrd.com**.
+
+**⚠️ Starting from the Orientation Session invitation (Form 2 approved) and ALL
+emails after that point** must be:
+- Sent from **hr@flolabsrd.com**
+- **CC: Oliver Benjamin Belliard Abreu <oliver.abreu@flolabsrd.com>, John Hazlewood <john@flolabsrd.com>**
+
+This includes: orientation invite, post-orientation follow-ups, Form 3 responses,
+Oliver 1-on-1 scheduling, agreement emails, and any other communication at
+Stage 5 (Saturday Meeting) or later.
 
 **⚠️ REQUIREMENT: All replies MUST preserve the email thread.** Every outgoing
 reply must include the quoted original message below the sign-off (standard

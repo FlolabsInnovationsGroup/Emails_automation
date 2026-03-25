@@ -355,6 +355,15 @@ verbatim dumps.
 Oliver wants hourly unattended runs. Needs: AWS account details, decision on REPLY_MODE
 (auto vs queue), persistent storage for ignore list, transfer of `.env`/`credentials.json`/`token.json`.
 
+### 2026-03-25: CC Oliver + John from orientation onwards (REQUIREMENT)
+All emails from the orientation invitation (Stage 5 / Saturday Meeting) onwards
+must CC `oliver.abreu@flolabsrd.com` and `john@flolabsrd.com`, and be sent from
+`hr@flolabsrd.com`. This applies to:
+- Fillout Form 2 approved → orientation invite (was missing CC, now fixed)
+- Fillout Form 3 approved → Oliver 1-on-1 intro (already had CC)
+- ALL non-Fillout LLM replies where the classified stage is Saturday Meeting or later
+The `_CC_POST_ORIENTATION` constant and `_CC_STAGES` set in `main.py` control this.
+
 ### 2026-03-25: Additional sender filters
 - Added `calendar.google.com`, `google.com`, `calendly.com` to `_SKIP_DOMAINS`
 - Added `oliver.belliardabreu@gmail.com` to new `_SKIP_ADDRESSES` set (Oliver Abreu's
