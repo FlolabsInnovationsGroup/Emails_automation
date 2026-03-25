@@ -390,6 +390,17 @@ def process_emails(config: Config, dry_run: bool, reply_target: int | None = Non
                                 webhook_url=config.discord_webhook_url,
                             )
 
+                    # LLM may return NO_REPLY for emails that should be left
+                    # for a human (e.g. meeting confirmations, availability slots).
+                    if reply_body.strip().upper() == "NO_REPLY":
+                        log.info(
+                            "LLM returned NO_REPLY for UID %s — skipping (left for human).",
+                            incoming.uid,
+                        )
+                        if not dry_run and config.mark_as_read:
+                            reader.mark_as_read(incoming.uid)
+                        continue
+
                     sender.send_reply(incoming, reply_body, dry_run=dry_run)
 
                 # Classify funnel stage for Gmail labelling.
