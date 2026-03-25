@@ -96,7 +96,7 @@ Application submitted
 [14] ATTENDED ──────────────────────────────────── lifecycle/lead status set to "Attended"
         │                                           CC: oliver + john on all emails from here
         │
-        │ applicant submits Form 3 (General Masterclass)
+        │ applicant submits Form 3: the General Masterclass
         │   Trigger: lifecycle = "Attended" OR "Interested" (post-orientation)
         │   HR reviews answers - low effort: ask to resubmit
         ▼
