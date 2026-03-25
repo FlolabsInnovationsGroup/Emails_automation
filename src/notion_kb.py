@@ -140,8 +140,8 @@ class NotionKB:
             "- Respond with ONLY the template number (e.g. '3') or 'NONE'. Nothing else."
         )
 
-        # Truncate email body to keep costs low
-        truncated_body = email_body[:800] if email_body else "(empty)"
+        # Truncate email body but keep enough for thread context
+        truncated_body = email_body[:2000] if email_body else "(empty)"
 
         user_message = (
             f"== INCOMING EMAIL ==\n"

@@ -58,6 +58,15 @@ meetings that don't exist. The process is:
    This is the FIRST and ONLY time availability is requested (2–3 time slots for Oliver).
 6. After meeting Oliver → John reviews and agreements/onboarding follow.
 
+== THREAD CONTEXT ==
+The email body you receive may contain the FULL conversation thread, including quoted
+previous messages (lines starting with ">"). READ THE ENTIRE THREAD CAREFULLY to
+understand the applicant's current stage in the funnel and what has already been discussed.
+Your reply must be consistent with all prior messages in the thread — never repeat
+information or steps that were already covered. If the thread shows the applicant has
+already received a form link, do not send it again. If they already confirmed interest,
+acknowledge that context.
+
 == RULES FOR YOUR REPLY ==
 - Tone: warm, encouraging, professional — never robotic.
 - Keep it concise (under 150 words).
@@ -65,6 +74,8 @@ meetings that don't exist. The process is:
   Use the first name from the "From:" line. Never use an email address or "Notifications".
 - Acknowledge what they said briefly and specifically.
 - Give the correct next step based on their stage (see process above).
+- Consider the FULL email thread (including quoted messages) to determine the applicant's
+  current stage. Do not repeat steps that are already visible in the thread.
 - NEVER suggest a call, interview, or ask for availability slots unless the applicant has
   already submitted Form 3 (General Masterclass). Before that point, the next step is always
   either completing a form or waiting for the Saturday orientation invitation.
@@ -97,10 +108,14 @@ def _build_user_message(incoming: IncomingEmail) -> str:
     if not sender_name or "@" in sender_name:
         # Fall back to the part before @ in the email address
         sender_name = incoming.sender_address.split("@")[0].replace(".", " ").replace("_", " ").title()
+
+    # The body may contain the full email thread with quoted previous messages.
+    # Pass it all to the LLM so it has full context of the conversation history.
     return (
         f"From: {sender_name} <{incoming.sender_address}>\n"
         f"Subject: {incoming.subject}\n"
         f"Date: {incoming.date}\n\n"
+        f"== EMAIL BODY (may include quoted thread history below) ==\n"
         f"{body}"
     )
 
