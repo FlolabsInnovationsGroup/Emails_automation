@@ -176,7 +176,67 @@ outbox/                  Queued replies (gitignored, auto-created)
 
 ---
 
-## Running the Bot
+## AWS Lambda Deployment
+
+The bot runs as `flolabs-email-automation` on AWS Lambda (us-east-1), triggered
+hourly by EventBridge.
+
+### Architecture
+
+```
+EventBridge (hourly) → Lambda (handler.handler)
+                           ↓
+                     S3: download token.json + credentials.json to /tmp/
+                           ↓
+                     Run main.main() with REPLY_MODE=auto
+                           ↓
+                     S3: upload refreshed token.json
+```
+
+### Key Files
+
+| File | Purpose |
+|---|---|
+| `handler.py` | Lambda entry point — S3 sync + run main |
+| `deploy/deploy.ps1` | Full deployment script (create/update) |
+
+### Deploy / Update
+
+```powershell
+cd Emails_automation
+.\deploy\deploy.ps1
+```
+
+### Test Manually
+
+```bash
+aws lambda invoke --function-name flolabs-email-automation --region us-east-1 --log-type Tail out.json
+```
+
+### Check Logs
+
+```bash
+aws logs tail /aws/lambda/flolabs-email-automation --region us-east-1 --since 1h
+```
+
+### S3 Bucket
+
+`flolabs-email-automation-975049954782` in us-east-1:
+- `email-automation/token.json` — Gmail OAuth token (auto-refreshed)
+- `email-automation/credentials.json` — Google OAuth client secrets
+
+### Environment Variables
+
+All `.env` values are set as Lambda env vars, with these overrides:
+- `REPLY_MODE=auto` (unattended)
+- `GMAIL_TOKEN_FILE=/tmp/token.json`
+- `GMAIL_CREDENTIALS_FILE=/tmp/credentials.json`
+- `S3_BUCKET=flolabs-email-automation-975049954782`
+- `S3_PREFIX=email-automation/`
+
+---
+
+## Running the Bot (Local)
 
 ```bash
 # Activate venv first
@@ -281,6 +341,17 @@ verbatim dumps.
 ### 2026-03-25: Planned AWS deployment
 Oliver wants hourly unattended runs. Needs: AWS account details, decision on REPLY_MODE
 (auto vs queue), persistent storage for ignore list, transfer of `.env`/`credentials.json`/`token.json`.
+
+### 2026-07-23: AWS Lambda deployment built
+Deployed as `flolabs-email-automation` on Lambda (us-east-1), matching the existing
+`flolabs-*` function naming convention. Key decisions:
+- **Zip packaging** (not Docker) — same as all other flolabs functions
+- **REPLY_MODE=auto** — unattended, sends replies immediately
+- **S3 bucket** `flolabs-email-automation-975049954782` stores `token.json` + `credentials.json`
+- **EventBridge** `flolabs-email-automation-hourly` triggers every hour
+- **Reuses `flolabs-lambda-role`** with added S3 policy for the token bucket
+- Discord webhook fires only when no Notion template matches (existing behaviour)
+- `lxml` and `beautifulsoup4` dropped from Lambda package (not imported anywhere)
 
 ---
 

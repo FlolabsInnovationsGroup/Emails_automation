@@ -27,6 +27,16 @@ __pycache__/
 .idea/
 *.iml
 
+# Lambda deployment artifacts
+.lambda-package/
+deploy/lambda-deploy.zip
+deploy/s3-policy.json
+deploy/env-vars.json
+
+# OAuth tokens (never commit)
+token.json
+credentials.json
+
 # OS
 .DS_Store
 Thumbs.db
