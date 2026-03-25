@@ -238,13 +238,21 @@ class NotionKB:
     def _call_openai(user_message: str, system_prompt: str, config: Config) -> str:
         import openai  # type: ignore
         client = openai.OpenAI(api_key=config.openai_api_key)
-        response = client.chat.completions.create(
-            model=config.effective_llm_model,
-            max_tokens=16,
-            temperature=0.0,
-            messages=[
+        model = config.effective_llm_model
+
+        # GPT-5+ models require 'max_completion_tokens' instead of 'max_tokens'
+        is_gpt5_plus = model.startswith("gpt-5") or model.startswith("o")
+        token_param = "max_completion_tokens" if is_gpt5_plus else "max_tokens"
+
+        kwargs = {
+            "model": model,
+            token_param: 16,
+            "temperature": 0.0,
+            "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message},
             ],
-        )
+        }
+
+        response = client.chat.completions.create(**kwargs)
         return response.choices[0].message.content or ""

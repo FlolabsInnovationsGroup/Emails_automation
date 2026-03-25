@@ -253,13 +253,21 @@ class LLMProcessor:
 
     def _call_openai(self, user_message: str, system_prompt: str) -> str:
         cfg = self.config
-        response = self._client.chat.completions.create(
-            model=cfg.effective_llm_model,
-            max_tokens=cfg.llm_max_tokens,
-            temperature=cfg.llm_temperature,
-            messages=[
+        model = cfg.effective_llm_model
+
+        # GPT-5+ models require 'max_completion_tokens' instead of 'max_tokens'
+        is_gpt5_plus = model.startswith("gpt-5") or model.startswith("o")
+        token_param = "max_completion_tokens" if is_gpt5_plus else "max_tokens"
+
+        kwargs = {
+            "model": model,
+            token_param: cfg.llm_max_tokens,
+            "temperature": cfg.llm_temperature,
+            "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message},
             ],
-        )
+        }
+
+        response = self._client.chat.completions.create(**kwargs)
         return response.choices[0].message.content or ""
