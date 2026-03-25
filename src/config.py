@@ -55,6 +55,14 @@ class Config:
     gmail_token_file: str = field(default_factory=lambda: os.getenv("GMAIL_TOKEN_FILE", "token.json"))
     gmail_labels_enabled: bool = field(default_factory=lambda: os.getenv("GMAIL_LABELS_ENABLED", "true").lower() == "true")
 
+    # --- Notion Knowledge Base ---
+    notion_api_token: str = field(default_factory=lambda: os.getenv("NOTION_API_TOKEN", ""))
+    notion_database_id: str = field(default_factory=lambda: os.getenv("NOTION_DATABASE_ID", ""))
+    notion_kb_enabled: bool = field(default_factory=lambda: os.getenv("NOTION_KB_ENABLED", "true").lower() == "true")
+
+    # --- Discord Webhook ---
+    discord_webhook_url: str = field(default_factory=lambda: os.getenv("DISCORD_WEBHOOK_URL", ""))
+
     # --- Logging ---
     log_level: str = field(default_factory=lambda: os.getenv("LOG_LEVEL", "INFO"))
     log_file: str = field(default_factory=lambda: os.getenv("LOG_FILE", ""))

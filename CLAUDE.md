@@ -121,6 +121,38 @@ https://platform.openai.com/usage — no code solution yet.
 
 ---
 
+## Notion Knowledge Base Integration (added 2026-03-25)
+
+Non-Fillout emails are matched against a **Notion database of response
+templates** before the LLM generates a reply. Flow:
+
+1. On startup, `NotionKB` fetches all active templates (checkbox
+   `Template_Status` = True) from Notion database `2d3a1576…`.
+2. For each non-Fillout email, the LLM is asked to pick the best matching
+   template from a compact summary list (template name + first 100 chars).
+3. If a template matches, its full body is prepended to the system prompt so
+   the LLM personalises the approved template rather than free-forming.
+4. If **no** template matches, a normal LLM reply is still generated, and a
+   **Discord webhook** notification is sent asking admins to add a template.
+
+### Config keys (`.env`)
+
+| Key | Purpose |
+|---|---|
+| `NOTION_API_TOKEN` | Notion internal integration token |
+| `NOTION_DATABASE_ID` | Notion database ID for templates |
+| `NOTION_KB_ENABLED` | `true`/`false` — master switch (default `true`) |
+| `DISCORD_WEBHOOK_URL` | Discord webhook for unmatched-question alerts |
+
+### Failsafe
+
+If the Notion API is unreachable or template matching fails, the system
+silently falls back to the original LLM-only reply path. Fillout form
+handling is completely unaffected — the KB lookup only runs in the `else`
+branch.
+
+---
+
 ## Architecture
 
 ```
@@ -131,6 +163,8 @@ src/
   email_sender.py        SMTP sender + outbox/ queue writer
   llm_processor.py       Anthropic / OpenAI reply generator
   llm_classifier.py      Funnel stage classifier (separate LLM call)
+  notion_kb.py           Notion database template matcher
+  discord_notifier.py    Discord webhook for unmatched emails
   funnel_labels.py       Gmail API label manager (Prospect/* labels)
   ignore_list.py         Persistent dry-run ignore list (dry_run_ignore.json)
   logger.py              Logging setup

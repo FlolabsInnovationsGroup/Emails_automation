@@ -138,15 +138,39 @@ class LLMProcessor:
     # Public API
     # ------------------------------------------------------------------
 
-    def generate_reply(self, incoming: IncomingEmail) -> str:
-        """Return the generated reply body text."""
+    def generate_reply(self, incoming: IncomingEmail, template_context: str | None = None) -> str:
+        """Return the generated reply body text.
+
+        If *template_context* is provided (a Notion KB template body), it is
+        prepended to the system prompt so the LLM personalises the approved
+        template rather than free-forming a reply.
+        """
         cfg = self.config
         user_message = _build_user_message(incoming)
+
+        # Build the effective system prompt
+        system_prompt = self._system_prompt
+        if template_context:
+            template_preamble = (
+                "== APPROVED TEMPLATE FOR THIS SCENARIO ==\n"
+                "The following is an approved response template for this type of inquiry. "
+                "Use it as the BASIS for your reply, adapting it naturally to address the "
+                "specific points the applicant raised. You may adjust tone and details but "
+                "keep the core message intact. Replace {first name} with the applicant's "
+                "actual first name.\n\n"
+                "IMPORTANT: Keep your reply concise (under 150 words). Extract the KEY "
+                "points from the template — do NOT copy the entire template verbatim. "
+                "Summarize and personalize, don't dump.\n\n"
+                f"Template:\n{template_context}\n\n"
+                "== END TEMPLATE ==\n\n"
+            )
+            system_prompt = template_preamble + system_prompt
+
         last_exc: Exception | None = None
 
         for attempt in range(1, cfg.retry_attempts + 1):
             try:
-                reply = self._call_llm(user_message)
+                reply = self._call_llm_with_system(user_message, system_prompt)
                 logger.info("Reply generated for UID %s (attempt %d).", incoming.uid, attempt)
                 return reply.strip()
             except Exception as exc:

@@ -37,7 +37,7 @@ Application submitted
 [4] NO ANSWER ──────────────────────────────────── "Last Reminder" (auto, from hr@flolabsrd.com)
                                                    + "Last Reminder Gmail" (auto, from Gmail)
         │
-        │ At any stage 1–4: applicant replies "interested"
+        │ At any stage 1-4: applicant replies "interested"
         ▼
 [5] CONTACTED ──────────────────────────────────── "2 Contacted Websites Form" (MANUAL)
         │                                           → sends Form 1 link
@@ -51,11 +51,11 @@ Application submitted
         ▼
 [8] NO ANSWER ──────────────────────────────────── "Last Reminder" (auto, from hr@flolabsrd.com)
         │
-        │ At any stage 5–8: applicant submits Form 1 (Websites & Presentations)
+        │ At any stage 5-8: applicant submits Form 1 (Websites & Presentations)
         │   → HubSpot automation IMMEDIATELY sets lifecycle stage to "Interested"
         │   → HR reviews answers daily by filtering HubSpot: Lifecycle Stage = "Interested"
         ▼
-[8b] INTERESTED (HubSpot intermediate) ─────────── No email sent yet — awaiting HR review
+[8b] INTERESTED (HubSpot intermediate) ─────────── No email sent yet - awaiting HR review
         │   If answers are low-effort (yes/no/I don't know) → send low-effort reply, keep at Interested
         │   If answers are high-effort → send BEFORE MEETING
         ▼
@@ -72,14 +72,14 @@ Application submitted
         ▼
 [12] NO ANSWER ─────────────────────────────────── "Last Reminder" (auto, from hr@flolabsrd.com)
         │
-        │ At any stage 9–12: applicant submits Form 2 (Meeting Recordings)
+        │ At any stage 9-12: applicant submits Form 2 (Meeting Recordings)
         │   → HR reviews answers daily (same Lifecycle Stage = "Interested" filter)
         │   If answers are low-effort → send low-effort reply, keep at Before Meeting
         │   If answers are high-effort → send Invitation Saturday
         ▼
 [13] SATURDAY MEETING ──────────────────────────── "Invitation Saturday" (AUTOMATED HERE)
         │                                           → invites to Orientation Session
-        │                                           → ask for 2–3 availability slots
+        │                                           → ask for 2-3 availability slots
         │                                           → From: hr@flolabsrd.com (NOT innovations)
         │
         │ After Orientation Session (Monday follow-up):
@@ -98,7 +98,7 @@ Application submitted
         │
         │ applicant submits Form 3 (General Masterclass)
         │   Trigger: lifecycle = "Attended" OR "Interested" (post-orientation)
-        │   HR reviews answers — low effort: ask to resubmit
+        │   HR reviews answers - low effort: ask to resubmit
         ▼
 [15] SECOND MEETING ────────────────────────────── "Introduce Oliver" (AUTOMATED HERE)
         │                                           CC: oliver.abreu@flolabsrd.com + john@flolabsrd.com
@@ -119,18 +119,18 @@ Application submitted
 
 ## The Three Fillout Forms
 
-### Form 1 — Websites & Presentations
+### Form 1 - Websites & Presentations
 - **Triggered by:** applicant replying "interested" → HR sends "Contacted Websites Form" manually
 - **Link sent in:** template "2 Contacted Websites Form"
 - **Fillout form ID:** `besSHDQpaHus`
 - **Fillout subject line:** `New submission for your "Websites & Presentations" form`
-- **Quality bar:** all questions must be answered — **except the last 4** (those belong to Form 2). Answers must be specific, referencing actual projects/websites. "Yes", "No", "I don't know" = low effort.
+- **Quality bar:** all questions must be answered - **except the last 4** (those belong to Form 2). Answers must be specific, referencing actual projects/websites. "Yes", "No", "I don't know" = low effort.
 - **HubSpot state when submission arrives:** Lifecycle = "Interested", Lead Status = "Contacted" / "Reminder after Contacted" / "Second reminder Contacted"
 - **On high-effort submission → automation sends:** "BEFORE MEETING" reply with Form 2 link, change stage to **Before Meeting**
   - **From:** `hr@flolabsinnovations.com`
-- **On low-effort submission → automation sends:** polite request to resubmit — stage stays **Interested**
+- **On low-effort submission → automation sends:** polite request to resubmit - stage stays **Interested**
 
-### Form 2 — Meeting Recordings
+### Form 2 - Meeting Recordings
 - **Triggered by:** applicant submitting Form 1 (high effort)
 - **Link sent in:** "BEFORE MEETING" template
 - **Fillout form ID:** `wqyLXfXzWGus`
@@ -140,18 +140,18 @@ Application submitted
 - **HubSpot state when submission arrives:** Lifecycle = "Interested", Lead Status = "Before Meeting" / "Reminder Before Meeting" / "2nd Reminder Before Meeting"
 - **On high-effort submission → automation sends:** "Invitation Saturday" reply, change stage to **Saturday Meeting**
   - **From:** `hr@flolabsrd.com` ← note: different from Form 1
-- **On low-effort submission → automation sends:** request to resubmit — stage stays **Before Meeting**
+- **On low-effort submission → automation sends:** request to resubmit - stage stays **Before Meeting**
 
-### Form 3 — General Masterclass
+### Form 3 - General Masterclass
 - **Triggered by:** applicant attending Orientation Session
 - **Link sent in:** "Attended + Masterclass" or "16 links Interested Masterclass" template
 - **Fillout subject line:** `New submission for your "General Masterclass" form`
-- **Quality bar:** answers must show genuine reflection on the content presented — not generic or copy-pasted
+- **Quality bar:** answers must show genuine reflection on the content presented - not generic or copy-pasted
 - **HubSpot state when submission arrives:** Lifecycle = "Attended" **or** "Interested" (post-orientation path)
 - **On high-effort submission → automation sends:** "Introduce Oliver" reply, change stage to **Second Meeting**
   - **From:** `hr@flolabsrd.com`
   - **CC:** `oliver.abreu@flolabsrd.com`, `john@flolabsrd.com`
-- **On low-effort submission → automation sends:** request to resubmit — stage stays **Attended**
+- **On low-effort submission → automation sends:** request to resubmit - stage stays **Attended**
 
 ---
 
@@ -180,8 +180,8 @@ The evaluator fails **safe**: if the LLM call errors, the submission is treated 
 
 | Stage | Template | From address | CC |
 |---|---|---|---|
-| Stages 1–12 (up to and including Form 2 reminder cycle) | All early-stage templates | `hr@flolabsinnovations.com` | — |
-| Stage 13 — Form 2 approved | "Invitation Saturday" | `hr@flolabsrd.com` | — |
+| Stages 1-12 (up to and including Form 2 reminder cycle) | All early-stage templates | `hr@flolabsinnovations.com` | - |
+| Stage 13 - Form 2 approved | "Invitation Saturday" | `hr@flolabsrd.com` | - |
 | Stages 14+ (post-orientation) | All templates | `hr@flolabsrd.com` | `oliver.abreu@flolabsrd.com`, `john@flolabsrd.com` |
 
 > ⚠️ **Important boundary:** The "Invitation Saturday" email (Form 2 approval) must come from
@@ -189,7 +189,7 @@ The evaluator fails **safe**: if the LLM call errors, the submission is treated 
 > The automation config must expose a second `from_email` for this stage (`FROM_EMAIL_RD`).
 
 - **All Fillout replies** are sent as a reply to the notification email (threading)
-- The `To:` address is **always the lead's email** extracted from the form body — never `notifications@fillout.com`
+- The `To:` address is **always the lead's email** extracted from the form body - never `notifications@fillout.com`
 - The lead's first name is extracted from the `First name` field in the form body
 
 ---
@@ -215,8 +215,8 @@ These are hard rules the LLM system prompt enforces. They must never be relaxed:
 | Rule | Reason |
 |---|---|
 | **Never ask for availability slots before Form 3 is submitted** | There is no individual call or interview before the Oliver 1-on-1. The only scheduled event before that is the group Saturday Orientation. |
-| **Never suggest a call or interview at early stages** | Early stages (New → Before Meeting → Saturday Meeting) are entirely asynchronous — forms and group session only. |
-| **The only time to ask for 2–3 slots is after Form 3 (Masterclass) is approved** | That's when the Oliver 1-on-1 is being scheduled. |
+| **Never suggest a call or interview at early stages** | Early stages (New → Before Meeting → Saturday Meeting) are entirely asynchronous - forms and group session only. |
+| **The only time to ask for 2-3 slots is after Form 3 (Masterclass) is approved** | That's when the Oliver 1-on-1 is being scheduled. |
 | **Never invent next steps** | The process has a fixed sequence. Any deviation (extra calls, screening interviews, etc.) creates confusion and contradicts what other applicants are told. |
 
 **Correct next step by stage:**
@@ -228,7 +228,7 @@ These are hard rules the LLM system prompt enforces. They must never be relaxed:
 | Before Meeting (Form 2 sent) | "Please watch the recordings and complete the form" |
 | Saturday Meeting (invited) | "We look forward to seeing you at the orientation session on Saturday" |
 | Attended (Form 3 sent) | "Please complete the General Masterclass form" |
-| Second Meeting (Form 3 approved) | "Please share 2–3 slots for your call with Oliver" ← only here |
+| Second Meeting (Form 3 approved) | "Please share 2-3 slots for your call with Oliver" ← only here |
 
 ---
 
@@ -236,11 +236,11 @@ These are hard rules the LLM system prompt enforces. They must never be relaxed:
 
 | Situation | Action | Change stage? |
 |---|---|---|
-| Contact at stages 1–4 says "first email received" | Send "First email" template | No |
+| Contact at stages 1-4 says "first email received" | Send "First email" template | No |
 | Contact at any stage says meeting link is broken | Send recording link: `https://app.read.ai/analytics/meetings/01K40HF517C9813761J0JS0CKE` | No |
-| Contact at stages 1–4 says "interested" | Send "Contacted Websites Form", change to **Contacted** | Yes |
+| Contact at stages 1-4 says "interested" | Send "Contacted Websites Form", change to **Contacted** | Yes |
 | Any contact says "not interested" (no reason) | Send "Not Interested", change to **Not Interested**, set reason "No Reason Provided" | Yes |
-| Any contact says "not interested" (with reason) | Change to **Not Interested**, set reason — do NOT send reply | Yes |
+| Any contact says "not interested" (with reason) | Change to **Not Interested**, set reason - do NOT send reply | Yes |
 | Contacted/Reminder stages need more time for form | Send "Looking forward to their answers" | No |
 | Any contact asks if paid | Send "Is it paid?" | No |
 | Any contact asks about duration/hours/start date | Send "DURATION OF INTERNSHIP AND WEEKLY COMMITMENT" | No |
@@ -255,8 +255,8 @@ These are hard rules the LLM system prompt enforces. They must never be relaxed:
 
 | Role | Detail |
 |---|---|
-| Founder & CEO | John Hazlewood — `john@flolabsrd.com` |
-| Former intern / 1-on-1 interviewer | Oliver Abreu — `oliver.abreu@flolabsrd.com` — completed the FloLabs internship program; conducts the 1-on-1 with applicants after Form 3, can answer first-hand questions about the internship experience |
+| Founder & CEO | John Hazlewood - `john@flolabsrd.com` |
+| Former intern / 1-on-1 interviewer | Oliver Abreu - `oliver.abreu@flolabsrd.com` - completed the FloLabs internship program; conducts the 1-on-1 with applicants after Form 3, can answer first-hand questions about the internship experience |
 | HR inbox (primary) | `hr@flolabsinnovations.com` |
 | HR inbox (reminders) | `hr@flolabsrd.com` |
 | HR Gmail | `hr.flomad@gmail.com` |
@@ -269,7 +269,7 @@ These are hard rules the LLM system prompt enforces. They must never be relaxed:
 
 ## Orientation Session (Monday Follow-up Checklist)
 
-1. Log in to Zoom (`john@flomadlabs.com`) — wait 1 hour after session ends
+1. Log in to Zoom (`john@flomadlabs.com`) - wait 1 hour after session ends
 2. Go to **Account Management → Reports → Meeting and webinar history**
 3. Select the session date, click **Unique users**
 4. Add all attendees to the [statistics sheet](https://docs.google.com/spreadsheets/d/1iGEwfTDoyzzl6-TL4S6b_9Q8Hm3MCz_eq4PfuRGI9Ys/edit)
@@ -316,7 +316,7 @@ These are hard rules the LLM system prompt enforces. They must never be relaxed:
 
 ## Config Requirements
 
-The automation requires **two** from-addresses — add both to `.env`:
+The automation requires **two** from-addresses - add both to `.env`:
 
 ```
 FROM_EMAIL=hr@flolabsinnovations.com        # Form 1 replies, general LLM replies
@@ -344,13 +344,40 @@ This codebase handles **inbound email triage** for the HR Gmail inbox (`hr.floma
 | Applies Gmail funnel labels | `src/funnel_labels.py` |
 
 **Emails the automation never replies to (skipped silently):**
-- Any sender from `flolabsrd.com`, `flolabsinnovations.com`, `flomadlabs.com`, `flomad.com` — internal staff (John, Oliver, etc.) forwarded back into the inbox
-- `hubspot.com`, `linkedin.com` — platform notifications
-- Any address in `_HR_ADDRESSES` — our own outbound addresses bouncing back
+- Any sender from `flolabsrd.com`, `flolabsinnovations.com`, `flomadlabs.com`, `flomad.com` - internal staff (John, Oliver, etc.) forwarded back into the inbox
+- `hubspot.com`, `linkedin.com` - platform notifications
+- Any address in `_HR_ADDRESSES` - our own outbound addresses bouncing back
 
 **What it does NOT do (still manual or HubSpot):**
-- Initial outreach sequences (stages 1–4 reminders) — handled by HubSpot workflows
-- Sending "Contacted Websites Form" when someone replies "interested" — manual
-- Orientation session Monday follow-up emails — manual
-- Post-orientation reminders — manual (weekly)
-- Onboarding (Discord, Toggl, Notion, DropboxSign, Stripe) — manual
+- Initial outreach sequences (stages 1-4 reminders) - handled by HubSpot workflows
+- Sending "Contacted Websites Form" when someone replies "interested" - manual
+- Orientation session Monday follow-up emails - manual
+- Post-orientation reminders - manual (weekly)
+- Onboarding (Discord, Toggl, Notion, DropboxSign, Stripe) - manual
+
+---
+
+## Notion Knowledge Base (added 2026-03-25)
+
+For non-Fillout emails (direct applicant questions), the bot now consults a
+**Notion database of approved response templates** before generating a reply.
+
+- **Database:** `2d3a1576955180d4875cef9df8db1dd7`
+- **~20 templates** covering: tuition fees, scholarships, reviews/scam
+  concerns, orientation meeting info, not interested responses, onboarding,
+  QA position, quantum engineering, sports science, etc.
+- Each template has a `Template_Name`, `Template_Body` (with `{first name}`
+  placeholder), `Template_Tags`, and `Template_Status` (active/inactive).
+
+### How it works
+
+1. The bot fetches all active templates from Notion at startup.
+2. For each non-Fillout email, the LLM picks the best matching template
+   (or "NONE") from a compact summary list.
+3. If matched: the template body is injected into the system prompt so the
+   LLM personalises the approved response.
+4. If unmatched: a normal LLM reply is generated, and a **Discord webhook**
+   notification is sent to admins requesting a new template be added.
+
+This is a **non-breaking addition** — Fillout form handling is untouched,
+and failures fall back silently to the original LLM-only path.

@@ -10,6 +10,7 @@ import argparse
 import sys
 
 from src.config import Config
+from src.discord_notifier import notify_unmatched_question
 from src.email_reader import EmailReader
 from src.email_sender import EmailSender, send_queued_emails
 from src.fillout_parser import is_fillout_notification, extract_lead, extract_qa_pairs, detect_form_type
@@ -17,6 +18,7 @@ from src.funnel_labels import make_funnel_labels
 from src import ignore_list as ignore_list_mod
 from src.llm_classifier import classify_stage
 from src.llm_processor import LLMProcessor
+from src.notion_kb import NotionKB
 from src.logger import setup_logger
 
 # Only process emails addressed to (or CC-ing) these HR addresses.
@@ -97,7 +99,11 @@ _HR_ADDRESSES: set[str] = {
 }
 
 # Domains / addresses that should never receive an automated reply.
-_SKIP_DOMAINS: set[str] = {"hubspot.com", "linkedin.com", "notifications.hubspot.com"}
+_SKIP_DOMAINS: set[str] = {
+    "hubspot.com", "linkedin.com", "notifications.hubspot.com",
+    "mail.hellosign.com", "hellosign.com",  # DropboxSign agreement notifications
+    "zoom.us",  # Zoom meeting confirmations / notifications
+}
 # Internal FloLabs domains — emails from these are John, Oliver, or other staff
 # forwarded back into the inbox. Never auto-reply to them.
 _SKIP_INTERNAL_DOMAINS: set[str] = {"flolabsrd.com", "flolabsinnovations.com", "flomadlabs.com", "flomad.com"}
@@ -219,6 +225,7 @@ def process_emails(config: Config, dry_run: bool, reply_target: int | None = Non
     sender = EmailSender(config)
     funnel = make_funnel_labels(config.gmail_credentials_file, config.gmail_token_file) \
         if config.gmail_labels_enabled else None
+    notion = NotionKB(config) if config.notion_kb_enabled and config.notion_api_token else None
 
     # --- Dry-run ignore-list bookkeeping ------------------------------------
     ignore_ids: set[str] = set()
@@ -341,7 +348,27 @@ def process_emails(config: Config, dry_run: bool, reply_target: int | None = Non
                             sender.send_reply(incoming, reply_body, dry_run=dry_run)
 
                 else:
-                    reply_body = llm.generate_reply(incoming)
+                    # ── Non-Fillout email: try Notion KB match first ─────
+                    template_name, template_body = (None, None)
+                    if notion:
+                        template_name, template_body = notion.find_matching_template(
+                            incoming.subject, incoming.body_text or "", config
+                        )
+
+                    if template_body:
+                        log.info("Matched Notion template %r for UID %s", template_name, incoming.uid)
+                        reply_body = llm.generate_reply(incoming, template_context=template_body)
+                    else:
+                        reply_body = llm.generate_reply(incoming)
+                        # Notify Discord about unmatched question
+                        if config.discord_webhook_url:
+                            notify_unmatched_question(
+                                sender=f"{incoming.sender} <{incoming.sender_address}>",
+                                subject=incoming.subject,
+                                body_summary=(incoming.body_text or "")[:500],
+                                webhook_url=config.discord_webhook_url,
+                            )
+
                     sender.send_reply(incoming, reply_body, dry_run=dry_run)
 
                 # Classify funnel stage for Gmail labelling.
