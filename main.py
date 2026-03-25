@@ -268,10 +268,54 @@ def process_emails(config: Config, dry_run: bool, reply_target: int | None = Non
         log.info("Dry-run reply target: %d replies.", reply_target)
 
     with EmailReader(config) as reader:
+        # ── Pre-collect emails and deduplicate per thread ──────────────
+        # Multiple unread emails in the same thread should only trigger a
+        # reply to the LATEST one. Earlier messages are marked as read and
+        # skipped to avoid replying mid-thread.
+        all_emails: list = []
         for incoming in reader.fetch_unread(
             ignore_message_ids=ignore_ids if dry_run else None,
             override_limit=fetch_limit,
         ):
+            all_emails.append(incoming)
+
+        # Group by normalised subject (thread key).
+        # Within each group, keep only the email with the highest UID
+        # (newest). Mark the rest as "shadowed" — they'll be marked read
+        # but not replied to.
+        thread_latest: dict[str, object] = {}   # norm_subject → incoming
+        shadowed_uids: set[str] = set()
+
+        def _thread_key(subj: str) -> str:
+            """Normalise subject to a thread key (strip Re:/Fwd: prefixes)."""
+            import re as _re
+            return _re.sub(r"^(?:re|fwd?)\s*:\s*", "", (subj or "").strip(), flags=_re.IGNORECASE).lower()
+
+        for incoming in all_emails:
+            key = _thread_key(incoming.subject)
+            # Also include sender in the key so different people with
+            # the same subject don't collide
+            sender_key = incoming.sender_address.strip().lower()
+            thread_id = f"{sender_key}::{key}"
+
+            existing = thread_latest.get(thread_id)
+            if existing is None:
+                thread_latest[thread_id] = incoming
+            else:
+                # Higher UID = newer email
+                if int(incoming.uid) > int(existing.uid):
+                    shadowed_uids.add(existing.uid)
+                    thread_latest[thread_id] = incoming
+                else:
+                    shadowed_uids.add(incoming.uid)
+
+        if shadowed_uids:
+            log.info(
+                "Thread dedup: %d emails shadowed by newer messages in same thread.",
+                len(shadowed_uids),
+            )
+
+        for incoming in all_emails:
             # Stop once we've hit the reply target (dry-run only)
             if dry_run and reply_target and replies_sent >= reply_target:
                 break
@@ -281,6 +325,16 @@ def process_emails(config: Config, dry_run: bool, reply_target: int | None = Non
             # Track this message in the ignore list regardless of outcome
             if dry_run and incoming.message_id:
                 new_ignore_ids.add(incoming.message_id)
+
+            # Skip shadowed emails (older messages in a thread with newer ones)
+            if incoming.uid in shadowed_uids:
+                log.info(
+                    "Skipping UID %s (shadowed by newer email in thread) | From: %s | Subject: %s",
+                    incoming.uid, incoming.sender_address, incoming.subject,
+                )
+                if not dry_run and config.mark_as_read:
+                    reader.mark_as_read(incoming.uid)
+                continue
 
             # Skip emails not addressed to an HR address, or from bots/ourselves
             if not _is_processable(incoming):
