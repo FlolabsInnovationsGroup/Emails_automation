@@ -342,6 +342,13 @@ verbatim dumps.
 Oliver wants hourly unattended runs. Needs: AWS account details, decision on REPLY_MODE
 (auto vs queue), persistent storage for ignore list, transfer of `.env`/`credentials.json`/`token.json`.
 
+### 2026-03-25: Email thread preservation (REQUIREMENT)
+All outgoing replies MUST include the quoted original message below the reply
+to preserve the email thread. The `_build_mime()` function in `email_sender.py`
+appends a standard quoted block (`On <date>, <sender> wrote: > ...`) after the
+sign-off. The `In-Reply-To` and `References` headers were already set correctly.
+**Never remove the quoted message block — it is a hard requirement.**
+
 ### 2026-07-23: AWS Lambda deployment built
 Deployed as `flolabs-email-automation` on Lambda (us-east-1), matching the existing
 `flolabs-*` function naming convention. Key decisions:

@@ -17,6 +17,11 @@ Emails before the Orientation Session are sent from **hr@flolabsinnovations.com*
 Emails from the Orientation Session onwards are sent from **hr@flolabsrd.com**,
 and **always CC oliver.abreu@flolabsrd.com and john@flolabsrd.com**.
 
+**⚠️ REQUIREMENT: All replies MUST preserve the email thread.** Every outgoing
+reply must include the quoted original message below the sign-off (standard
+`On <date>, <sender> wrote:` format with `>` prefixed lines). The `In-Reply-To`
+and `References` headers must also be set to maintain threading in email clients.
+
 ---
 
 ## Stage Map

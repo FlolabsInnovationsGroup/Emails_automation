@@ -39,6 +39,28 @@ def _strip_sign_off(body: str) -> str:
     return _SIGN_OFF_RE.sub("", body).rstrip()
 
 
+def _build_quoted_text(incoming: IncomingEmail, from_display: str) -> str:
+    """Build the quoted original message block for threading.
+
+    Produces a standard email quote like:
+        On Mon, 24 Mar 2025 at 10:30, John Doe <john@example.com> wrote:
+        > original line 1
+        > original line 2
+    """
+    # Use the original plain-text body; fall back to a note if empty
+    original = incoming.body_text.strip() if incoming.body_text else "(no text content)"
+
+    # Quote each line with >
+    quoted_lines = "\n".join(f"> {line}" for line in original.splitlines())
+
+    # Build the attribution line
+    sender_label = f"{incoming.sender} <{incoming.sender_address}>" if incoming.sender else incoming.sender_address
+    date_str = incoming.date or "unknown date"
+    attribution = f"On {date_str}, {sender_label} wrote:"
+
+    return f"\n\n{attribution}\n{quoted_lines}"
+
+
 def _build_mime(
     config: Config,
     incoming: IncomingEmail,
@@ -69,11 +91,15 @@ def _build_mime(
     # If the reply already starts with a greeting ("Hi Name,"), don't add another.
     # Otherwise prepend one using the patched sender name.
     if _GREETING_RE.match(clean_body):
-        full_body = f"{clean_body}{sign_off}"
+        reply_text = f"{clean_body}{sign_off}"
     else:
         first_name = incoming.sender.split()[0] if incoming.sender else ""
         salutation = f"Hi {first_name}," if first_name else "Hi,"
-        full_body = f"{salutation}\n\n{clean_body}{sign_off}"
+        reply_text = f"{salutation}\n\n{clean_body}{sign_off}"
+
+    # Append the quoted original message to preserve the email thread
+    quoted = _build_quoted_text(incoming, sender_display)
+    full_body = f"{reply_text}{quoted}"
 
     msg.attach(MIMEText(full_body, "plain", "utf-8"))
     return msg
