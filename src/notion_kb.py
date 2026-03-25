@@ -76,9 +76,19 @@ class NotionKB:
                     if not name:
                         continue
 
-                    # Template_Body — rich_text
+                    # Template_Body — rich_text (Notion caps at 2000 chars per property).
+                    # If the body looks truncated, we fetch the full page content via
+                    # block children API (supports up to 10000+ chars).
                     body_parts = props.get("Template_Body", {}).get("rich_text", [])
                     body = "".join(part.get("plain_text", "") for part in body_parts).strip()
+
+                    # If body is near the Notion rich_text limit, fetch full page blocks
+                    if len(body) >= 1900:
+                        page_id = page.get("id", "")
+                        if page_id:
+                            full_body = self._fetch_page_blocks(page_id, headers)
+                            if full_body:
+                                body = full_body
 
                     # Template_Tags — multi_select
                     tags = [
@@ -97,6 +107,37 @@ class NotionKB:
         except Exception as exc:
             logger.error("Failed to load Notion KB templates: %s", exc)
             self._templates = []
+
+    @staticmethod
+    def _fetch_page_blocks(page_id: str, headers: dict) -> str:
+        """Fetch the full text content of a Notion page via its block children.
+
+        This bypasses the 2000-char rich_text property limit by reading the
+        page body directly. Returns the concatenated plain text of all text
+        blocks, or empty string on failure.
+        """
+        url = f"https://api.notion.com/v1/blocks/{page_id}/children?page_size=100"
+        try:
+            resp = requests.get(url, headers=headers, timeout=30)
+            resp.raise_for_status()
+            data = resp.json()
+
+            lines: list[str] = []
+            for block in data.get("results", []):
+                block_type = block.get("type", "")
+                block_data = block.get(block_type, {})
+                rich_text = block_data.get("rich_text", [])
+                text = "".join(part.get("plain_text", "") for part in rich_text)
+                if text:
+                    lines.append(text)
+
+            full_text = "\n".join(lines).strip()
+            if full_text:
+                logger.debug("Fetched %d chars from page blocks for %s", len(full_text), page_id)
+            return full_text
+        except Exception as exc:
+            logger.warning("Failed to fetch page blocks for %s: %s", page_id, exc)
+            return ""
 
     # ------------------------------------------------------------------
     # Template matching
@@ -125,7 +166,7 @@ class NotionKB:
         # Build a compact summary of available templates
         summaries = []
         for i, t in enumerate(self._templates, 1):
-            preview = t.body[:100].replace("\n", " ") if t.body else "(empty)"
+            preview = t.body[:300].replace("\n", " ") if t.body else "(empty)"
             tags_str = ", ".join(t.tags) if t.tags else "none"
             summaries.append(f"{i}. {t.name} [tags: {tags_str}] — {preview}…")
 
@@ -140,8 +181,9 @@ class NotionKB:
             "- Respond with ONLY the template number (e.g. '3') or 'NONE'. Nothing else."
         )
 
-        # Truncate email body but keep enough for thread context
-        truncated_body = email_body[:2000] if email_body else "(empty)"
+        # Pass the full email body (including thread history) — no truncation.
+        # The LLM needs the complete conversation context for accurate matching.
+        truncated_body = email_body if email_body else "(empty)"
 
         user_message = (
             f"== INCOMING EMAIL ==\n"
