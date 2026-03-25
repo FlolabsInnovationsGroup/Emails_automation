@@ -311,6 +311,19 @@ These domains are blocked in `_is_processable()` and never get replies:
 | `linkedin.com` | Platform notifications |
 | `mail.hellosign.com`, `hellosign.com` | DropboxSign agreement notifications |
 | `zoom.us` | Zoom meeting confirmations |
+| `calendar.google.com` | Google Calendar invitations |
+| `google.com` | Google Calendar notifications |
+| `calendly.com` | Calendly scheduling notifications |
+
+**Blocked addresses (`_SKIP_ADDRESSES`):**
+
+| Address | Reason |
+|---|---|
+| `oliver.belliardabreu@gmail.com` | Oliver Abreu's personal Gmail (Head of R&D) |
+
+**Subject-based filters:** Emails with subjects starting with `Invitation:`,
+`Accepted:`, `Declined:`, `Updated invitation:`, `Canceled event:`, or
+`Cancelled:` are skipped (calendar events from any sender).
 
 **⚠️ `fillout.com` must NOT be in `_SKIP_DOMAINS`** — Fillout emails need to pass through
 `_is_processable()` to reach the Fillout parser which handles form submissions.
@@ -341,6 +354,15 @@ verbatim dumps.
 ### 2026-03-25: Planned AWS deployment
 Oliver wants hourly unattended runs. Needs: AWS account details, decision on REPLY_MODE
 (auto vs queue), persistent storage for ignore list, transfer of `.env`/`credentials.json`/`token.json`.
+
+### 2026-03-25: Additional sender filters
+- Added `calendar.google.com`, `google.com`, `calendly.com` to `_SKIP_DOMAINS`
+- Added `oliver.belliardabreu@gmail.com` to new `_SKIP_ADDRESSES` set (Oliver Abreu's
+  personal Gmail — same person as Oliver Belliard Abreu / Oliver Belliard)
+- Added subject-based filter: skip emails starting with "Invitation:", "Accepted:",
+  "Declined:", "Updated invitation:", "Canceled event:", "Cancelled:" (calendar events)
+- Lesson: internal domain filter already blocked `@flolabsrd.com` etc., but Oliver also
+  sends from a personal Gmail that needed an explicit block.
 
 ### 2026-03-25: Email thread preservation (REQUIREMENT)
 All outgoing replies MUST include the quoted original message below the reply

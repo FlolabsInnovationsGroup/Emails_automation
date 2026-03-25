@@ -102,11 +102,21 @@ _HR_ADDRESSES: set[str] = {
 _SKIP_DOMAINS: set[str] = {
     "hubspot.com", "linkedin.com", "notifications.hubspot.com",
     "mail.hellosign.com", "hellosign.com",  # DropboxSign agreement notifications
-    "zoom.us",  # Zoom meeting confirmations / notifications
+    "zoom.us",                              # Zoom meeting confirmations
+    "calendar.google.com",                  # Google Calendar invitations
+    "google.com",                           # Google Calendar notifications
+    "calendly.com",                         # Calendly scheduling notifications
 }
 # Internal FloLabs domains — emails from these are John, Oliver, or other staff
 # forwarded back into the inbox. Never auto-reply to them.
 _SKIP_INTERNAL_DOMAINS: set[str] = {"flolabsrd.com", "flolabsinnovations.com", "flomadlabs.com", "flomad.com"}
+
+# Specific external addresses that should never receive an automated reply.
+# Oliver Abreu (Head of R&D) uses this personal Gmail alongside his internal
+# addresses — he is the same person as Oliver Belliard Abreu / Oliver Belliard.
+_SKIP_ADDRESSES: set[str] = {
+    "oliver.belliardabreu@gmail.com",
+}
 
 
 def _from_address(config: Config, form_type: str | None) -> str | None:
@@ -143,6 +153,10 @@ def _is_processable(incoming) -> bool:
     if sender in _HR_ADDRESSES:
         return False
 
+    # Skip specific blocked addresses (e.g. Oliver Abreu's personal Gmail)
+    if sender in _SKIP_ADDRESSES:
+        return False
+
     # Skip known platform / bot senders
     domain = sender.split("@")[-1] if "@" in sender else ""
     if domain in _SKIP_DOMAINS:
@@ -150,6 +164,13 @@ def _is_processable(incoming) -> bool:
 
     # Never auto-reply to internal FloLabs staff addresses
     if domain in _SKIP_INTERNAL_DOMAINS:
+        return False
+
+    # Skip Google Calendar / Calendly invitations by subject pattern
+    subject_lower = (incoming.subject or "").lower()
+    if subject_lower.startswith("invitation:") or subject_lower.startswith("accepted:") \
+       or subject_lower.startswith("declined:") or subject_lower.startswith("updated invitation:") \
+       or subject_lower.startswith("canceled event:") or subject_lower.startswith("cancelled:"):
         return False
 
     return True

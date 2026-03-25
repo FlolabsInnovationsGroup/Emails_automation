@@ -22,6 +22,15 @@ reply must include the quoted original message below the sign-off (standard
 `On <date>, <sender> wrote:` format with `>` prefixed lines). The `In-Reply-To`
 and `References` headers must also be set to maintain threading in email clients.
 
+**⚠️ NEVER reply to:**
+- Emails from internal FloLabs domains (`flolabsrd.com`, `flolabsinnovations.com`,
+  `flomadlabs.com`, `flomad.com`)
+- Oliver Abreu's personal email (`oliver.belliardabreu@gmail.com`) — same person as
+  Oliver Belliard Abreu / Oliver Belliard, Head of R&D
+- Google Calendar or Calendly invitations (any email with subject starting with
+  "Invitation:", "Accepted:", "Declined:", etc.)
+- Platform notifications (HubSpot, LinkedIn, HelloSign, Zoom)
+
 ---
 
 ## Stage Map
