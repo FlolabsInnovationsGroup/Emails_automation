@@ -76,19 +76,18 @@ class NotionKB:
                     if not name:
                         continue
 
-                    # Template_Body — rich_text (Notion caps at 2000 chars per property).
-                    # If the body looks truncated, we fetch the full page content via
-                    # block children API (supports up to 10000+ chars).
-                    body_parts = props.get("Template_Body", {}).get("rich_text", [])
-                    body = "".join(part.get("plain_text", "") for part in body_parts).strip()
+                    # Template body — always fetched from the page content (block
+                    # children API), NOT from the Template_Body property.
+                    # This avoids Notion's 2000-char rich_text limit and lets
+                    # templates be maintained as full Notion pages.
+                    page_id = page.get("id", "")
+                    body = self._fetch_page_blocks(page_id, headers) if page_id else ""
 
-                    # If body is near the Notion rich_text limit, fetch full page blocks
-                    if len(body) >= 1900:
-                        page_id = page.get("id", "")
-                        if page_id:
-                            full_body = self._fetch_page_blocks(page_id, headers)
-                            if full_body:
-                                body = full_body
+                    if not body:
+                        logger.warning(
+                            "Template %r has no page content — skipping.", name
+                        )
+                        continue
 
                     # Template_Tags — multi_select
                     tags = [
@@ -112,24 +111,35 @@ class NotionKB:
     def _fetch_page_blocks(page_id: str, headers: dict) -> str:
         """Fetch the full text content of a Notion page via its block children.
 
-        This bypasses the 2000-char rich_text property limit by reading the
-        page body directly. Returns the concatenated plain text of all text
-        blocks, or empty string on failure.
+        Reads the page body directly (no property size limits). Handles
+        pagination so even very long pages are fully captured.
+        Returns the concatenated plain text of all text blocks, or empty
+        string on failure.
         """
-        url = f"https://api.notion.com/v1/blocks/{page_id}/children?page_size=100"
-        try:
-            resp = requests.get(url, headers=headers, timeout=30)
-            resp.raise_for_status()
-            data = resp.json()
+        base_url = f"https://api.notion.com/v1/blocks/{page_id}/children"
+        lines: list[str] = []
+        has_more = True
+        start_cursor: str | None = None
 
-            lines: list[str] = []
-            for block in data.get("results", []):
-                block_type = block.get("type", "")
-                block_data = block.get(block_type, {})
-                rich_text = block_data.get("rich_text", [])
-                text = "".join(part.get("plain_text", "") for part in rich_text)
-                if text:
-                    lines.append(text)
+        try:
+            while has_more:
+                params = "page_size=100"
+                if start_cursor:
+                    params += f"&start_cursor={start_cursor}"
+                resp = requests.get(f"{base_url}?{params}", headers=headers, timeout=30)
+                resp.raise_for_status()
+                data = resp.json()
+
+                for block in data.get("results", []):
+                    block_type = block.get("type", "")
+                    block_data = block.get(block_type, {})
+                    rich_text = block_data.get("rich_text", [])
+                    text = "".join(part.get("plain_text", "") for part in rich_text)
+                    if text:
+                        lines.append(text)
+
+                has_more = data.get("has_more", False)
+                start_cursor = data.get("next_cursor")
 
             full_text = "\n".join(lines).strip()
             if full_text:
