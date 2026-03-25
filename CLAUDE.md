@@ -224,10 +224,72 @@ the retry logic in `llm_processor.py` will back off (`RETRY_ATTEMPTS=3`,
 
 ---
 
+## Access Credentials & Services
+
+| Service | Detail |
+|---|---|
+| **Gmail inbox (IMAP polled)** | `hr.flomad@gmail.com` — App Password: `oydy mdvv kfhy maxv` |
+| **Gmail OAuth** | `credentials.json` + `token.json` (for funnel labels) |
+| **Notion API Token** | `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` |
+| **Notion Database** | ID: `2d3a1576955180d4875cef9df8db1dd7` — "Email templates" (73+ templates) |
+| **Discord Webhook** | `https://discord.com/api/webhooks/1486244838109352018/VgNdYeQncgcSvXdUzC2qWyWwm9bpoMQ91JmAVC8g58laY9SyEIvmcEJLnG05ymt2YIHF` |
+| **HubSpot login** | `hr@flomad.com` |
+| **Fillout login** | `hr@flomadlabs.com` |
+| **Zoom account** | `john@flomadlabs.com` |
+
+All secrets are also in `.env` (gitignored).
+
+---
+
+## Skipped Sender Domains (`_SKIP_DOMAINS`)
+
+These domains are blocked in `_is_processable()` and never get replies:
+
+| Domain | Reason |
+|---|---|
+| `hubspot.com`, `notifications.hubspot.com` | Platform notifications |
+| `linkedin.com` | Platform notifications |
+| `mail.hellosign.com`, `hellosign.com` | DropboxSign agreement notifications |
+| `zoom.us` | Zoom meeting confirmations |
+
+**⚠️ `fillout.com` must NOT be in `_SKIP_DOMAINS`** — Fillout emails need to pass through
+`_is_processable()` to reach the Fillout parser which handles form submissions.
+
+Internal FloLabs domains (`flolabsrd.com`, `flolabsinnovations.com`, `flomadlabs.com`, `flomad.com`)
+are separately blocked via `_SKIP_INTERNAL_DOMAINS`.
+
+---
+
+## Lessons Learned (Session Log)
+
+### 2026-03-20: `_is_processable()` missing `hr.flomad@gmail.com`
+All 2565 emails were skipped because the Gmail inbox address was not in `_HR_ADDRESSES`.
+Added it + `hr@flomadlabs.com`. Critical: never remove these.
+
+### 2026-03-25: HelloSign/Zoom notifications getting LLM replies
+`noreply@mail.hellosign.com` and `no-reply@zoom.us` were passing through filters and
+the LLM was generating confused replies (e.g., talking about agreements before the Oliver
+meeting). Fix: added to `_SKIP_DOMAINS`. Lesson: block system notifications at the filter
+level — don't rely on LLM guardrails for sender types that should never get replies.
+
+### 2026-03-25: Notion KB integration
+Added Notion database as knowledge base. 73 active templates. LLM matches incoming emails
+to best template, uses it as context for on-message replies. Unmatched emails trigger
+Discord webhook to admin channel. Template-based replies enforce 150-word limit to prevent
+verbatim dumps.
+
+### 2026-03-25: Planned AWS deployment
+Oliver wants hourly unattended runs. Needs: AWS account details, decision on REPLY_MODE
+(auto vs queue), persistent storage for ignore list, transfer of `.env`/`credentials.json`/`token.json`.
+
+---
+
 ## Session Checklist
 
 Before starting work each session:
 1. Read this file (CLAUDE.md)
-2. Check `dry_run_ignore.json` exists and has entries (means dry runs have run)
-3. Check `outbox/` for any queued replies pending human review
-4. Confirm `_HR_ADDRESSES` in `main.py` includes `hr.flomad@gmail.com`
+2. Read `FUNNEL.md` for the canonical recruitment funnel reference
+3. Check `dry_run_ignore.json` exists and has entries (means dry runs have run)
+4. Check `outbox/` for any queued replies pending human review
+5. Confirm `_HR_ADDRESSES` in `main.py` includes `hr.flomad@gmail.com`
+6. Confirm `_SKIP_DOMAINS` includes `mail.hellosign.com`, `hellosign.com`, `zoom.us`
