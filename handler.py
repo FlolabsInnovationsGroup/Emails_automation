@@ -74,6 +74,8 @@ def handler(event, context):
         }
 
     # ── 3. Run the email automation ─────────────────────────────────────────
+    from src.delivery_monitor import report_failure, report_success
+
     exit_code = 1
     try:
         # Import here so env vars are already set when Config() reads them
@@ -83,7 +85,15 @@ def handler(event, context):
         logger.info("Email automation completed with exit code: %d", exit_code)
 
     except Exception as exc:
+        error_msg = str(exc)
         logger.error("Email automation failed: %s\n%s", exc, traceback.format_exc())
+
+        # Report delivery failure — throttles schedule + alerts Discord
+        try:
+            report_failure(error_msg)
+        except Exception as monitor_exc:
+            logger.warning("Delivery monitor failed: %s", monitor_exc)
+
         # Still try to upload token in case OAuth refreshed before the crash
         try:
             _upload_to_s3(s3, LOCAL_TOKEN, S3_BUCKET, S3_TOKEN_KEY)
@@ -92,7 +102,7 @@ def handler(event, context):
         return {
             "statusCode": 500,
             "body": json.dumps({
-                "error": str(exc),
+                "error": error_msg,
                 "traceback": traceback.format_exc()
             })
         }
@@ -103,7 +113,19 @@ def handler(event, context):
     except Exception as exc:
         logger.warning("Failed to upload token.json to S3: %s (non-fatal)", exc)
 
-    # ── 5. Return result ────────────────────────────────────────────────────
+    # ── 5. Report outcome and return result ─────────────────────────────────
+    if exit_code == 0:
+        try:
+            report_success()
+        except Exception as monitor_exc:
+            logger.warning("Delivery monitor (success) failed: %s", monitor_exc)
+    else:
+        # Non-zero exit code without an exception — still a failure
+        try:
+            report_failure(f"Email automation exited with code {exit_code}")
+        except Exception as monitor_exc:
+            logger.warning("Delivery monitor failed: %s", monitor_exc)
+
     success = exit_code == 0
     return {
         "statusCode": 200 if success else 500,

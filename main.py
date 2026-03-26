@@ -7,6 +7,7 @@ Entry point — run with `python main.py [options]`
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 
 from src.config import Config
@@ -572,6 +573,10 @@ def main(argv: list[str] | None = None) -> int:
         return 130
     except Exception as exc:
         logger.error("Unhandled error: %s", exc, exc_info=True)
+        # In Lambda context, re-raise so the handler can detect delivery errors
+        # and trigger the delivery monitor (throttle + Discord alert).
+        if os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+            raise
         return 1
 
     return 0

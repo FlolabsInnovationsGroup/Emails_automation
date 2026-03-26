@@ -165,6 +165,7 @@ src/
   llm_classifier.py      Funnel stage classifier (separate LLM call)
   notion_kb.py           Notion database template matcher
   discord_notifier.py    Discord webhook for unmatched emails
+  delivery_monitor.py    Delivery failure alerting + EventBridge throttle
   funnel_labels.py       Gmail API label manager (Prospect/* labels)
   ignore_list.py         Persistent dry-run ignore list (dry_run_ignore.json)
   logger.py              Logging setup
@@ -333,6 +334,22 @@ are separately blocked via `_SKIP_INTERNAL_DOMAINS`.
 
 ---
 
+### 2026-03-26: Gmail App Password expired — IMAP auth failure
+The Gmail App Password for `hr.flomad@gmail.com` was revoked/expired between
+March 25 and March 26. Every Lambda invocation crashed with
+`[AUTHENTICATIONFAILED] Invalid credentials (Failure)`. The OAuth token for
+Gmail labels was also expired. No Discord alerts were sent because the crash
+happened before any email processing.
+
+Fix required: generate a new App Password in Google Account → Security →
+2-Step Verification → App passwords, then update `EMAIL_PASSWORD` in the
+Lambda environment variables and redeploy.
+
+Also deployed the delivery monitor (`src/delivery_monitor.py`) to prevent
+this from happening silently again. See "Delivery Monitor" section above.
+
+---
+
 ## Lessons Learned (Session Log)
 
 ### 2026-03-20: `_is_processable()` missing `hr.flomad@gmail.com`
@@ -390,6 +407,39 @@ Deployed as `flolabs-email-automation` on Lambda (us-east-1), matching the exist
 - **Reuses `flolabs-lambda-role`** with added S3 policy for the token bucket
 - Discord webhook fires only when no Notion template matches (existing behaviour)
 - `lxml` and `beautifulsoup4` dropped from Lambda package (not imported anywhere)
+
+---
+
+## Delivery Monitor (added 2026-03-26)
+
+When the Lambda fails due to a delivery/auth problem (IMAP auth failure,
+SMTP failure, connection errors, expired tokens), the **delivery monitor**
+(`src/delivery_monitor.py`) automatically:
+
+1. **Alerts Discord** — sends a red embed to the webhook with error details,
+   failure count, and new schedule interval.
+2. **Throttles EventBridge** — doubles the schedule interval on each consecutive
+   failure (1h → 2h → 4h → 8h → 16h → 24h max) to stop hammering broken
+   credentials.
+3. **Persists state to S3** — `delivery_state.json` tracks consecutive failures
+   and current interval.
+4. **Auto-recovers** — when the automation succeeds again, the interval resets
+   to 1h and a green "Recovered" Discord notification is sent.
+
+Only delivery-related errors trigger throttling. Other errors (LLM failures,
+Notion API issues) do not affect the schedule.
+
+### How `main.py` interacts with the monitor
+
+When running in Lambda (`AWS_LAMBDA_FUNCTION_NAME` env var is set), `main.py`
+re-raises exceptions instead of catching them — this lets `handler.py` detect
+the error type and call the delivery monitor.
+
+### IAM permissions
+
+The Lambda role (`flolabs-lambda-role`) has the inline policy
+`flolabs-email-automation-eventbridge` granting `events:PutRule` and
+`events:DescribeRule` on the EventBridge rule.
 
 ---
 
