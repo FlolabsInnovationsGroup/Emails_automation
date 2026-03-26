@@ -20,9 +20,9 @@ emails after that point** must be:
 - Sent from **hr@flolabsrd.com**
 - **CC: Oliver Benjamin Belliard Abreu <oliver.abreu@flolabsrd.com>, John Hazlewood <john@flolabsrd.com>**
 
-This includes: orientation invite, post-orientation follow-ups, Form 3 responses,
-Oliver 1-on-1 scheduling, agreement emails, and any other communication at
-Stage 5 (Saturday Meeting) or later.
+This includes: orientation invite, low-effort resubmit requests for Form 2 and
+Form 3, post-orientation follow-ups, Form 3 responses, Oliver 1-on-1 scheduling,
+agreement emails, and any other communication at Stage 13 (Saturday Meeting) or later.
 
 **⚠️ REQUIREMENT: All replies MUST preserve the email thread.** Every outgoing
 reply must include the quoted original message below the sign-off (standard
@@ -102,6 +102,7 @@ Application submitted
         │                                           → invites to Orientation Session
         │                                           → ask for 2-3 availability slots
         │                                           → From: hr@flolabsrd.com (NOT innovations)
+        │                                           → CC: oliver.abreu + john from here onwards
         │
         │ After Orientation Session (Monday follow-up):
         ├─ attended full session ──────────────────── "Attended + Masterclass" (MANUAL)
@@ -202,8 +203,7 @@ The evaluator fails **safe**: if the LLM call errors, the submission is treated 
 | Stage | Template | From address | CC |
 |---|---|---|---|
 | Stages 1-12 (up to and including Form 2 reminder cycle) | All early-stage templates | `hr@flolabsinnovations.com` | - |
-| Stage 13 - Form 2 approved | "Invitation Saturday" | `hr@flolabsrd.com` | - |
-| Stages 14+ (post-orientation) | All templates | `hr@flolabsrd.com` | `oliver.abreu@flolabsrd.com`, `john@flolabsrd.com` |
+| Stage 13+ (Form 2 approved / Saturday Meeting and all later stages) | All templates | `hr@flolabsrd.com` | `oliver.abreu@flolabsrd.com`, `john@flolabsrd.com` |
 
 > ⚠️ **Important boundary:** The "Invitation Saturday" email (Form 2 approval) must come from
 > `hr@flolabsrd.com`, not `hr@flolabsinnovations.com`. This is explicitly stated in the workflow doc.

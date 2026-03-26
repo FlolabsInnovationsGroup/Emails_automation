@@ -421,8 +421,12 @@ def process_emails(config: Config, dry_run: bool, reply_target: int | None = Non
                             reply_body = _LOW_EFFORT_REPLY_FORM3
                         else:
                             reply_body = _LOW_EFFORT_REPLY_FORM1
-                        # Low-effort: use same from_addr as the high-effort path for consistency
-                        sender.send_reply(incoming, reply_body, dry_run=dry_run, from_addr=rd_from)
+                        # Low-effort: use same from_addr as the high-effort path for consistency.
+                        # CC Oliver + John on Form 2 and Form 3 low-effort replies
+                        # (these are at/past the orientation stage).
+                        cc_low = _CC_POST_ORIENTATION if form_type in ("form_2_recordings", "form_3_masterclass") else None
+                        sender.send_reply(incoming, reply_body, dry_run=dry_run,
+                                          cc=cc_low, from_addr=rd_from)
 
                     else:
                         log.info(
