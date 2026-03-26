@@ -130,10 +130,16 @@ def _call_anthropic(prompt: str, config: Config) -> str:
 def _call_openai(prompt: str, config: Config) -> str:
     import openai  # type: ignore
     client = openai.OpenAI(api_key=config.openai_api_key)
+    model = config.effective_llm_model
+
+    # GPT-5+ models require 'max_completion_tokens' instead of 'max_tokens'
+    is_gpt5_plus = model.startswith("gpt-5") or model.startswith("gpt-6")
+    token_param = "max_completion_tokens" if is_gpt5_plus else "max_tokens"
+
     response = client.chat.completions.create(
-        model=config.effective_llm_model,
-        max_tokens=32,
+        model=model,
         temperature=0.0,
         messages=[{"role": "user", "content": prompt}],
+        **{token_param: 32},
     )
     return response.choices[0].message.content or ""
