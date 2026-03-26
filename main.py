@@ -300,40 +300,124 @@ def process_emails(config: Config, dry_run: bool, reply_target: int | None = Non
         ):
             all_emails.append(incoming)
 
-        # Group by normalised subject (thread key).
-        # Within each group, keep only the email with the highest UID
-        # (newest). Mark the rest as "shadowed" — they'll be marked read
-        # but not replied to.
-        thread_latest: dict[str, object] = {}   # norm_subject → incoming
-        shadowed_uids: set[str] = set()
+        # ── Thread grouping using References / In-Reply-To headers ────
+        # Build a proper thread graph: all emails sharing any Message-ID
+        # in their References chain belong to the same thread.  Within
+        # each thread, only the email with the highest UID (newest) gets
+        # a reply.  If the newest email in a thread is from an internal
+        # sender, the ENTIRE thread is skipped (internal reply means a
+        # human is already handling it).
+        #
+        # Fillout form notifications are EXCLUDED from thread grouping
+        # because they arrive as standalone emails from Fillout, not as
+        # replies in an existing thread.
 
-        def _thread_key(subj: str) -> str:
-            """Normalise subject to a thread key (strip Re:/Fwd: prefixes)."""
-            import re as _re
-            return _re.sub(r"^(?:re|fwd?)\s*:\s*", "", (subj or "").strip(), flags=_re.IGNORECASE).lower()
+        from src.fillout_parser import is_fillout_notification as _is_fillout
+
+        # Internal domains — if the newest email is from one of these,
+        # skip the whole thread.
+        _internal_domains = _SKIP_INTERNAL_DOMAINS
+        _internal_addrs = _SKIP_ADDRESSES
+
+        def _is_internal_sender(addr: str) -> bool:
+            addr = addr.strip().lower()
+            if addr in _internal_addrs:
+                return True
+            domain = addr.split("@")[-1] if "@" in addr else ""
+            return domain in _internal_domains
+
+        # Union-Find for thread clustering
+        parent: dict[str, str] = {}
+
+        def _find(x: str) -> str:
+            while parent.get(x, x) != x:
+                parent[x] = parent.get(parent[x], parent[x])
+                x = parent[x]
+            return x
+
+        def _union(a: str, b: str) -> None:
+            ra, rb = _find(a), _find(b)
+            if ra != rb:
+                parent[ra] = rb
+
+        # First pass: build thread clusters from Message-ID / References
+        for incoming in all_emails:
+            mid = incoming.message_id.strip()
+            if not mid:
+                continue
+
+            # Skip Fillout notifications from thread grouping
+            if _is_fillout(incoming.sender_address, incoming.subject):
+                continue
+
+            parent.setdefault(mid, mid)
+
+            # Link this message to its References chain
+            for ref in incoming.references:
+                ref = ref.strip()
+                if ref:
+                    parent.setdefault(ref, ref)
+                    _union(mid, ref)
+            if incoming.in_reply_to:
+                irt = incoming.in_reply_to.strip()
+                parent.setdefault(irt, irt)
+                _union(mid, irt)
+
+        # Second pass: group emails by thread root, find the latest in each
+        from collections import defaultdict
+        thread_emails: dict[str, list] = defaultdict(list)
 
         for incoming in all_emails:
-            key = _thread_key(incoming.subject)
-            # Also include sender in the key so different people with
-            # the same subject don't collide
-            sender_key = incoming.sender_address.strip().lower()
-            thread_id = f"{sender_key}::{key}"
+            mid = incoming.message_id.strip()
+            is_fillout_msg = _is_fillout(incoming.sender_address, incoming.subject)
 
-            existing = thread_latest.get(thread_id)
-            if existing is None:
-                thread_latest[thread_id] = incoming
+            if not mid or is_fillout_msg:
+                # Fillout notifications and emails without Message-ID
+                # each get their own "thread" (no dedup)
+                thread_emails[f"__standalone__{incoming.uid}"].append(incoming)
             else:
-                # Higher UID = newer email
-                if int(incoming.uid) > int(existing.uid):
-                    shadowed_uids.add(existing.uid)
-                    thread_latest[thread_id] = incoming
-                else:
-                    shadowed_uids.add(incoming.uid)
+                root = _find(mid)
+                thread_emails[root].append(incoming)
+
+        shadowed_uids: set[str] = set()
+        internal_thread_uids: set[str] = set()
+
+        for thread_root, emails in thread_emails.items():
+            if thread_root.startswith("__standalone__"):
+                continue  # single email, no dedup needed
+
+            if len(emails) <= 1:
+                continue
+
+            # Sort by UID descending (newest first)
+            emails.sort(key=lambda e: int(e.uid), reverse=True)
+            newest = emails[0]
+
+            # If the newest email in the thread is from internal, skip ALL
+            if _is_internal_sender(newest.sender_address):
+                for e in emails:
+                    internal_thread_uids.add(e.uid)
+                log.info(
+                    "Thread %s: latest message (UID %s) is from internal sender %s "
+                    "— skipping entire thread (%d emails).",
+                    thread_root[:40], newest.uid, newest.sender_address, len(emails),
+                )
+                continue
+
+            # Otherwise, shadow all but the newest
+            for e in emails[1:]:
+                shadowed_uids.add(e.uid)
 
         if shadowed_uids:
             log.info(
                 "Thread dedup: %d emails shadowed by newer messages in same thread.",
                 len(shadowed_uids),
+            )
+        if internal_thread_uids:
+            log.info(
+                "Thread dedup: %d emails skipped because an internal sender "
+                "already replied in the thread.",
+                len(internal_thread_uids),
             )
 
         for incoming in all_emails:
@@ -346,6 +430,16 @@ def process_emails(config: Config, dry_run: bool, reply_target: int | None = Non
             # Track this message in the ignore list regardless of outcome
             if dry_run and incoming.message_id:
                 new_ignore_ids.add(incoming.message_id)
+
+            # Skip emails in threads where an internal sender already replied
+            if incoming.uid in internal_thread_uids:
+                log.info(
+                    "Skipping UID %s (internal sender already replied in thread) | From: %s | Subject: %s",
+                    incoming.uid, incoming.sender_address, incoming.subject,
+                )
+                if not dry_run and config.mark_as_read:
+                    reader.mark_as_read(incoming.uid)
+                continue
 
             # Skip shadowed emails (older messages in a thread with newer ones)
             if incoming.uid in shadowed_uids:

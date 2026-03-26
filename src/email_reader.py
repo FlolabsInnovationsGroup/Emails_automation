@@ -29,6 +29,8 @@ class IncomingEmail:
     body_text: str
     body_html: str
     date: str
+    in_reply_to: str = ""
+    references: list[str] = field(default_factory=list)
     raw: Message | None = field(default=None, repr=False)
 
 
@@ -195,6 +197,11 @@ class EmailReader:
         cc = _extract_addresses(msg.get("Cc", ""))
         plain, html = _get_body(msg)
 
+        # Extract threading headers for proper thread grouping
+        in_reply_to = msg.get("In-Reply-To", "").strip()
+        references_raw = msg.get("References", "")
+        references = references_raw.split() if references_raw else []
+
         return IncomingEmail(
             uid=uid,
             message_id=msg.get("Message-ID", ""),
@@ -206,6 +213,8 @@ class EmailReader:
             body_text=plain.strip(),
             body_html=html.strip(),
             date=msg.get("Date", ""),
+            in_reply_to=in_reply_to,
+            references=references,
             raw=msg,
         )
 
