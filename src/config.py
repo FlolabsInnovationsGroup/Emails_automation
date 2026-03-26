@@ -88,5 +88,5 @@ class Config:
         if self.llm_model:
             return self.llm_model
         return (
-            "claude-sonnet-4-6" if self.llm_provider == "anthropic" else "gpt-5.4"
+            "claude-sonnet-4-6" if self.llm_provider == "anthropic" else "gpt-5.4-nano"
         )
