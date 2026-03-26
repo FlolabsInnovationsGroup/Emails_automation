@@ -126,6 +126,8 @@ Application submitted
         │                                           CC: oliver.abreu@flolabsrd.com + john@flolabsrd.com
         │
         │ Oliver meets with applicant, sends recap email
+        │ If applicant misses the 1-on-1 → send reschedule link:
+        │   https://calendly.com/oliver-belliardabreu/new-meeting?guests=hr@flolabsrd.com,john@flolabsrd.com
         ▼
 [16] AGREEMENT SENT ────────────────────────────── "Onboarding" (MANUAL, reply to Oliver's recap)
         │                                           CC: oliver + john
@@ -269,6 +271,7 @@ These are hard rules the LLM system prompt enforces. They must never be relaxed:
 | Any contact asks about selection process steps | Send "Selection process steps" | No |
 | Before Meeting stages: available but form not done | Send "I am available to attend the group meeting" | No |
 | Attended/Interested + Masterclass form submitted | Send "Introduce Oliver", CC oliver + john, change to **Second Meeting** | Yes |
+| Second Meeting: applicant missed 1-on-1 with Oliver | Send reschedule Calendly link: `https://calendly.com/oliver-belliardabreu/new-meeting?guests=hr@flolabsrd.com,john@flolabsrd.com` | No |
 
 ---
 
@@ -319,6 +322,7 @@ These are hard rules the LLM system prompt enforces. They must never be relaxed:
 | Daily tasks recording | https://us06web.zoom.us/rec/share/i80cWWqzqS99bph3Gz7_7J38W7HKcAhbD03H61fQCum_CrOTB7bVeCF-WvqQXNmh.ejmrxPBld5KNmSVW |
 | Oliver 1-on-1 recording | https://us06web.zoom.us/rec/share/2Jfw41V8qM_YYo1RkmPQHxa9M5dGESHkPzPpTRblmS1xc_HO9h96LoS6scgx5MAm.T5WAqoR7iIzQERZo |
 | Oliver 1-on-1 (Read.ai) | https://app.read.ai/analytics/meetings/01KFX9YDWXTZ27434AXB5PJCBP |
+| **Oliver 1-on-1 reschedule (Calendly)** | **https://calendly.com/oliver-belliardabreu/new-meeting?guests=hr@flolabsrd.com,john@flolabsrd.com** |
 
 > The **live session link** is the standing Zoom room used for every Saturday Orientation.
 > Use it when re-inviting someone who missed a previous session or when sending the

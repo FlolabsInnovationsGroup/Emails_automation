@@ -334,6 +334,12 @@ are separately blocked via `_SKIP_INTERNAL_DOMAINS`.
 
 ---
 
+### 2026-03-26: Oliver 1-on-1 missed → Calendly reschedule link
+When an applicant at the Second Meeting stage misses their 1-on-1 with Oliver,
+they should be sent a reschedule link:
+`https://calendly.com/oliver-belliardabreu/new-meeting?guests=hr@flolabsrd.com,john@flolabsrd.com`
+The `?guests=` parameter auto-CCs HR and John on the calendar invite.
+
 ### 2026-03-26: Gmail App Password expired — IMAP auth failure
 The Gmail App Password for `hr.flomad@gmail.com` was revoked/expired between
 March 25 and March 26. Every Lambda invocation crashed with
