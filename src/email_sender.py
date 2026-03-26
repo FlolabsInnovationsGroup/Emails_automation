@@ -70,7 +70,7 @@ def _build_mime(
 ) -> MIMEMultipart:
     msg = MIMEMultipart("alternative")
 
-    effective_addr = from_addr or config.email_address
+    effective_addr = from_addr or config.from_email or config.email_address
     sender_display = config.sender_name or effective_addr
     msg["From"] = f"{sender_display} <{effective_addr}>"
     msg["To"] = incoming.sender_address
@@ -179,7 +179,7 @@ class EmailSender:
     def _send_smtp(self, incoming: IncomingEmail, mime: MIMEMultipart, cc: list[str] | None = None, from_addr: str | None = None) -> None:
         cfg = self.config
         last_exc: Exception | None = None
-        effective_from = from_addr or cfg.email_address
+        effective_from = from_addr or cfg.from_email or cfg.email_address
         all_recipients = [incoming.sender_address] + (cc or [])
 
         for attempt in range(1, cfg.retry_attempts + 1):

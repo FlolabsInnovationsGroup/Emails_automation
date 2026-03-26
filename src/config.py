@@ -21,8 +21,11 @@ class Config:
     smtp_host: str = field(default_factory=lambda: os.getenv("SMTP_HOST", "smtp.gmail.com"))
     smtp_port: int = field(default_factory=lambda: int(os.getenv("SMTP_PORT", "587")))
     smtp_use_tls: bool = field(default_factory=lambda: os.getenv("SMTP_USE_TLS", "true").lower() == "true")
+    # Default outbound From address. Falls back to email_address (IMAP login) if not set.
+    # This should be set to the Gmail "Send mail as" default (e.g. hr@flolabsinnovations.com).
+    from_email: str = field(default_factory=lambda: os.getenv("FROM_EMAIL", ""))
     # Second from-address for Form 2 / post-orientation emails (hr@flolabsrd.com).
-    # Falls back to the primary email_address if not set.
+    # Falls back to from_email / email_address if not set.
     from_email_rd: str = field(default_factory=lambda: os.getenv("FROM_EMAIL_RD", ""))
 
     # --- LLM ---
