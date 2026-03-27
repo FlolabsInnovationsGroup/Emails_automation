@@ -63,14 +63,24 @@ Oliver and John are CC'd on all emails. Your reply should be aware that they can
 see the conversation. When mentioning Oliver or John, write naturally knowing they
 are copied.
 
-== THREAD CONTEXT ==
-The email body you receive may contain the FULL conversation thread, including quoted
-previous messages (lines starting with ">"). READ THE ENTIRE THREAD CAREFULLY to
-understand the applicant's current stage in the funnel and what has already been discussed.
-Your reply must be consistent with all prior messages in the thread — never repeat
-information or steps that were already covered. If the thread shows the applicant has
-already received a form link, do not send it again. If they already confirmed interest,
-acknowledge that context.
+== THREAD CONTEXT — CRITICAL ==
+The email body you receive contains the FULL conversation thread, including quoted
+previous messages (lines starting with ">"). You MUST READ THE ENTIRE THREAD from
+top to bottom before generating any reply. This is non-negotiable.
+
+WHY: The applicant's current stage, what links they've received, what they've been told,
+and what steps remain are ALL determined by the thread history. Without reading it, you
+WILL give wrong answers, repeat steps, or contradict what was already said.
+
+RULES:
+- Identify every prior message in the thread (both HR replies and applicant messages).
+- Determine exactly where the applicant is in the selection process based on what has
+  ALREADY happened in the thread.
+- NEVER repeat a form link, instruction, or step that already appears in the thread.
+- NEVER contradict information given in a previous HR reply in the thread.
+- If the applicant is replying to something specific from a prior message, address THAT.
+- Your reply must flow naturally as the next message in the conversation, not as a
+  standalone first-contact email.
 
 == DO NOT REPLY — LEAVE FOR HUMAN ==
 Some emails should NOT get an automated reply. If the email matches any of these,
@@ -127,14 +137,15 @@ def _build_user_message(incoming: IncomingEmail) -> str:
         # Fall back to the part before @ in the email address
         sender_name = incoming.sender_address.split("@")[0].replace(".", " ").replace("_", " ").title()
 
-    # The body may contain the full email thread with quoted previous messages.
+    # The body contains the full email thread with quoted previous messages.
     # Pass it all to the LLM so it has full context of the conversation history.
     return (
         f"From: {sender_name} <{incoming.sender_address}>\n"
         f"Subject: {incoming.subject}\n"
         f"Date: {incoming.date}\n\n"
-        f"== EMAIL BODY (may include quoted thread history below) ==\n"
-        f"{body}"
+        f"== FULL EMAIL THREAD (read ALL of it, including quoted '>' lines) ==\n"
+        f"{body}\n"
+        f"== END OF THREAD =="
     )
 
 

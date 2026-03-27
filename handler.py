@@ -131,9 +131,15 @@ def handler(event, context):
         except Exception as monitor_exc:
             logger.warning("Delivery monitor (success) failed: %s", monitor_exc)
     else:
-        # Non-zero exit code without an exception — still a failure
+        # Non-zero exit code without an exception — still a failure.
+        # Exit code 2 = per-email SMTP errors (e.g. sending limit exceeded).
+        # Use a message that matches _DELIVERY_ERROR_PATTERNS so throttle kicks in.
+        if exit_code == 2:
+            failure_msg = "SMTP failed after retries — per-email send errors detected"
+        else:
+            failure_msg = f"Email automation exited with code {exit_code}"
         try:
-            report_failure(f"Email automation exited with code {exit_code}")
+            report_failure(failure_msg)
         except Exception as monitor_exc:
             logger.warning("Delivery monitor failed: %s", monitor_exc)
 

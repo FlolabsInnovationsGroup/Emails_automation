@@ -8,12 +8,43 @@ Automatically reads unread prospect emails from any IMAP inbox, generates person
 
 - **IMAP email reading** — works with Gmail, Outlook, or any IMAP provider
 - **LLM-powered replies** — uses Anthropic Claude (default) or OpenAI GPT
+- **Full thread analysis** — reads the ENTIRE email conversation before replying (see below)
+- **Double-reply prevention** — persistent tracker ensures no email or thread gets replied to twice
+- **Notion KB templates** — matches incoming emails against an approved template database
 - **Two reply modes** — `queue` (save for review) or `auto` (send immediately)
 - **`--dry-run` flag** — preview generated replies without touching your inbox or outbox
 - **Retry logic** — configurable retries for IMAP / SMTP / LLM failures
+- **Delivery monitor** — auto-throttles batch size on errors, alerts Discord, auto-recovers
 - **Fully configurable** via a `.env` file — no hard-coded secrets
 - **Structured logging** — console + optional file output
 - **Custom system prompt** — drop in your own prompt file to change the reply style
+
+---
+
+## ⚠️ Critical: Full Conversation Thread Analysis
+
+**Every reply is generated based on the ENTIRE email thread, not just the latest message.**
+
+When an applicant replies, their email body includes quoted previous messages (lines starting with `>`). The bot passes the complete thread to the LLM, which is instructed to:
+
+1. **Read the full thread** top-to-bottom before generating any reply
+2. **Determine the applicant's current stage** from what has already been discussed
+3. **Never repeat** form links, instructions, or steps already visible in the thread
+4. **Never contradict** information from previous HR replies
+5. **Flow naturally** as the next message in an ongoing conversation
+
+This is enforced in the system prompt (`src/llm_processor.py`) and is the single most important guarantee for reply quality. Without it, the bot would treat every email as a first-contact message and re-send information the applicant already received.
+
+### Double-Reply Prevention
+
+A persistent replied tracker (`src/replied_tracker.py`) prevents the bot from ever replying twice to the same email or thread:
+
+- **Message-ID tracking** — every replied-to Message-ID is recorded
+- **Thread-root tracking** — every thread we've participated in is recorded
+- **Same-run dedup** — within a single run, only the newest email per thread gets a reply
+- **Internal sender detection** — if a FloLabs staff member already replied in the thread, the entire thread is skipped
+
+State is persisted to S3 (Lambda) or a local JSON file. Entries auto-expire after 30 days.
 
 ---
 

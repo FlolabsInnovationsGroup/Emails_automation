@@ -456,6 +456,55 @@ to apply the current throttled batch size via the `MAX_EMAILS` env var.
 
 ---
 
+## ⚠️ CRITICAL: Full Thread Analysis (added 2026-03-27)
+
+Every email reply MUST be based on analysis of the ENTIRE conversation thread,
+not just the latest message. The email body passed to the LLM includes all
+quoted previous messages (lines starting with `>`). The system prompt
+explicitly instructs the LLM to:
+
+1. Read the full thread top-to-bottom before generating any reply
+2. Determine the applicant's current stage from thread history
+3. Never repeat form links, instructions, or steps already in the thread
+4. Never contradict information from previous HR replies
+5. Flow naturally as the next message in the conversation
+
+**Why this matters:** Without thread analysis, the bot will:
+- Re-send form links the applicant already received
+- Repeat steps the applicant has already completed
+- Contradict what was said in earlier replies
+- Treat returning applicants like first-time contacts
+
+This is enforced in `src/llm_processor.py` (system prompt + user message
+formatting) and documented in the GitHub README.
+
+---
+
+## Replied Tracker (added 2026-03-27)
+
+A persistent tracker (`src/replied_tracker.py`) prevents double-replies
+across runs. It records every Message-ID and thread root we've replied to,
+persisted to S3 (`replied_tracker.json`) in Lambda or a local file otherwise.
+
+**Guardrails implemented:**
+
+1. **Message-ID check** — if we already replied to this exact email (e.g.
+   crash after SMTP send but before `mark_as_read`), skip it.
+2. **Thread-root check** — if we already replied to *any* email in this
+   thread (via Union-Find on References/In-Reply-To), skip all other unread
+   emails in the same thread. Prevents replying to old messages when a new
+   reply triggers re-examination of the thread.
+3. **Same-run thread dedup** — existing Union-Find logic shadows older emails
+   in the same thread, only replying to the newest.
+4. **Internal sender detection** — if the newest email in a thread is from
+   an internal FloLabs sender, the entire thread is skipped (human is handling it).
+5. **Fillout exemption** — Fillout form notifications are standalone events
+   and bypass thread-level dedup (each form submission gets its own reply).
+
+Entries auto-expire after 30 days to prevent unbounded growth.
+
+---
+
 ## Session Checklist
 
 Before starting work each session:

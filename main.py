@@ -20,6 +20,7 @@ from src import ignore_list as ignore_list_mod
 from src.llm_classifier import classify_stage
 from src.llm_processor import LLMProcessor
 from src.notion_kb import NotionKB
+from src.replied_tracker import RepliedTracker
 from src.logger import setup_logger
 
 # Only process emails addressed to (or CC-ing) these HR addresses.
@@ -178,6 +179,13 @@ def _is_processable(incoming) -> bool:
     if sender in _SKIP_ADDRESSES:
         return False
 
+    # Skip noreply / no-reply / donotreply senders — automated emails that
+    # should never get a reply and just waste LLM tokens.
+    local_part = sender.split("@")[0] if "@" in sender else sender
+    _noreply_patterns = {"noreply", "no-reply", "no_reply", "donotreply", "do-not-reply", "do_not_reply"}
+    if local_part in _noreply_patterns:
+        return False
+
     # Skip known platform / bot senders
     domain = sender.split("@")[-1] if "@" in sender else ""
     if domain in _SKIP_DOMAINS:
@@ -268,6 +276,9 @@ def process_emails(config: Config, dry_run: bool, reply_target: int | None = Non
     funnel = make_funnel_labels(config.gmail_credentials_file, config.gmail_token_file) \
         if config.gmail_labels_enabled else None
     notion = NotionKB(config) if config.notion_kb_enabled and config.notion_api_token else None
+
+    # --- Replied-message tracker (prevents double-replies across runs) ------
+    tracker = RepliedTracker()
 
     # --- Dry-run ignore-list bookkeeping ------------------------------------
     ignore_ids: set[str] = set()
@@ -460,7 +471,35 @@ def process_emails(config: Config, dry_run: bool, reply_target: int | None = Non
                     incoming.recipients,
                     incoming.cc,
                 )
+                if not dry_run and config.mark_as_read:
+                    reader.mark_as_read(incoming.uid)
                 continue
+
+            # ── Double-reply guardrail: check replied tracker ────────────────────
+            mid = incoming.message_id.strip()
+            if mid and tracker.was_replied(mid):
+                log.info(
+                    "Skipping UID %s (already replied to this Message-ID) | From: %s | Subject: %s",
+                    incoming.uid, incoming.sender_address, incoming.subject,
+                )
+                if not dry_run and config.mark_as_read:
+                    reader.mark_as_read(incoming.uid)
+                continue
+
+            # Check thread-level: if we already replied to any email in this
+            # thread, skip to avoid sending multiple replies into the same
+            # conversation across runs.
+            is_fillout_check = _is_fillout(incoming.sender_address, incoming.subject)
+            if mid and not is_fillout_check:
+                thread_root = _find(mid)
+                if tracker.thread_was_replied(thread_root):
+                    log.info(
+                        "Skipping UID %s (already replied to thread %s) | From: %s | Subject: %s",
+                        incoming.uid, thread_root[:40], incoming.sender_address, incoming.subject,
+                    )
+                    if not dry_run and config.mark_as_read:
+                        reader.mark_as_read(incoming.uid)
+                    continue
 
             # ── Fillout notification: rewrite sender to the actual lead ──────────
             # Fillout emails arrive FROM notifications@fillout.com, but the real
@@ -609,11 +648,26 @@ def process_emails(config: Config, dry_run: bool, reply_target: int | None = Non
                 if not dry_run and config.mark_as_read:
                     reader.mark_as_read(incoming.uid)
 
+                # Record this reply in the tracker (prevents double-replies
+                # if the next run sees this email still unread due to a crash
+                # or IMAP lag).
+                reply_mid = incoming.message_id.strip()
+                if reply_mid:
+                    is_fillout_for_tracker = _is_fillout(incoming.sender_address, incoming.subject)
+                    reply_thread_root = _find(reply_mid) if (reply_mid and not is_fillout_for_tracker) else None
+                    tracker.record_reply(reply_mid, thread_root=reply_thread_root)
+
                 replies_sent += 1
 
             except Exception as exc:
                 log.error("Failed to process UID %s: %s", incoming.uid, exc)
                 errors += 1
+
+    # Persist the replied tracker (S3 in Lambda, local file otherwise)
+    try:
+        tracker.save()
+    except Exception as exc:
+        log.warning("Failed to save replied tracker: %s", exc)
 
     # Save updated ignore list after the run
     if dry_run and new_ignore_ids:
@@ -628,6 +682,8 @@ def process_emails(config: Config, dry_run: bool, reply_target: int | None = Non
             "Inbox exhausted — only %d/%d replyable emails found.",
             replies_sent, reply_target,
         )
+
+    return errors
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -665,7 +721,7 @@ def main(argv: list[str] | None = None) -> int:
     logger.info("Starting email automation (mode: %s) …", mode)
 
     try:
-        process_emails(config, dry_run=args.dry_run, reply_target=reply_target)
+        errors = process_emails(config, dry_run=args.dry_run, reply_target=reply_target)
     except KeyboardInterrupt:
         logger.info("Interrupted by user.")
         return 130
@@ -676,6 +732,11 @@ def main(argv: list[str] | None = None) -> int:
         if os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
             raise
         return 1
+
+    # Non-zero exit code when there were per-email errors (e.g. SMTP rate limits).
+    # This triggers the delivery monitor's batch-size throttle in Lambda.
+    if errors:
+        return 2
 
     return 0
 
