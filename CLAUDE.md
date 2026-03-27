@@ -418,24 +418,32 @@ Deployed as `flolabs-email-automation` on Lambda (us-east-1), matching the exist
 
 ---
 
-## Delivery Monitor (added 2026-03-26)
+## Delivery Monitor (added 2026-03-26, updated 2026-03-27)
 
 When the Lambda fails due to a delivery/auth problem (IMAP auth failure,
 SMTP failure, connection errors, expired tokens), the **delivery monitor**
 (`src/delivery_monitor.py`) automatically:
 
 1. **Alerts Discord** — sends a red embed to the webhook with error details,
-   failure count, and new schedule interval.
-2. **Throttles EventBridge** — doubles the schedule interval on each consecutive
-   failure (1h → 2h → 4h → 8h → 16h → 24h max) to stop hammering broken
-   credentials.
+   failure count, and new batch size.
+2. **Reduces batch size** — halves MAX_EMAILS on each consecutive failure
+   (e.g. 10 → 5 → 2 → 1 min) while the **hourly schedule stays unchanged**.
+   This prevents backlog accumulation — emails keep being processed every hour,
+   just fewer per run.
 3. **Persists state to S3** — `delivery_state.json` tracks consecutive failures
-   and current interval.
-4. **Auto-recovers** — when the automation succeeds again, the interval resets
-   to 1h and a green "Recovered" Discord notification is sent.
+   and current batch size.
+4. **Auto-recovers** — when the automation succeeds again, the batch size resets
+   to the original MAX_EMAILS value and a green "Recovered" Discord notification
+   is sent.
 
 Only delivery-related errors trigger throttling. Other errors (LLM failures,
-Notion API issues) do not affect the schedule.
+Notion API issues) do not affect the batch size.
+
+**Why batch-size throttle instead of schedule throttle:** Increasing the interval
+between runs (old approach) caused emails to pile up in the inbox, creating a
+growing backlog. Reducing the batch size instead means the bot still runs every
+hour and keeps chipping away at the inbox, just processing fewer emails per run
+when things are unstable.
 
 ### How `main.py` interacts with the monitor
 
@@ -443,11 +451,8 @@ When running in Lambda (`AWS_LAMBDA_FUNCTION_NAME` env var is set), `main.py`
 re-raises exceptions instead of catching them — this lets `handler.py` detect
 the error type and call the delivery monitor.
 
-### IAM permissions
-
-The Lambda role (`flolabs-lambda-role`) has the inline policy
-`flolabs-email-automation-eventbridge` granting `events:PutRule` and
-`events:DescribeRule` on the EventBridge rule.
+`handler.py` calls `get_throttled_max_emails()` before running `main.main()`
+to apply the current throttled batch size via the `MAX_EMAILS` env var.
 
 ---
 

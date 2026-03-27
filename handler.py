@@ -74,7 +74,18 @@ def handler(event, context):
         }
 
     # ── 3. Run the email automation ─────────────────────────────────────────
-    from src.delivery_monitor import report_failure, report_success
+    from src.delivery_monitor import report_failure, report_success, get_throttled_max_emails
+
+    # Apply batch-size throttle: if previous runs failed, reduce MAX_EMAILS
+    # while keeping the hourly schedule unchanged.
+    throttled_max = get_throttled_max_emails()
+    current_max = int(os.environ.get("MAX_EMAILS", "10"))
+    if throttled_max < current_max:
+        logger.info(
+            "Delivery throttle active: MAX_EMAILS reduced from %d to %d.",
+            current_max, throttled_max,
+        )
+        os.environ["MAX_EMAILS"] = str(throttled_max)
 
     exit_code = 1
     try:

@@ -1,13 +1,17 @@
-"""Delivery health monitor — alerts Discord and throttles EventBridge on failures.
+"""Delivery health monitor — alerts Discord and throttles batch size on failures.
 
 When the email automation fails due to a delivery problem (IMAP/SMTP auth,
 connection errors, etc.), this module:
 
 1. Sends a Discord embed describing the failure
-2. Doubles the EventBridge interval (backoff: 1h → 2h → 4h → 8h … up to 24h)
+2. Halves the MAX_EMAILS batch size (backoff: e.g. 10 → 5 → 2 → 1 min)
+   while keeping the EventBridge hourly schedule unchanged
 3. Persists the backoff state to S3
 
-When the automation succeeds, it resets the interval back to 1 hour.
+When the automation succeeds, it resets the batch size to the original value.
+
+The hourly schedule is NEVER changed — only the number of emails processed
+per run is reduced. This prevents a growing backlog of unprocessed emails.
 """
 
 from __future__ import annotations
@@ -31,8 +35,10 @@ S3_STATE_KEY = S3_PREFIX + "delivery_state.json"
 EVENTBRIDGE_RULE_NAME = "flolabs-email-automation-hourly"
 AWS_REGION = os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
 
-BASE_INTERVAL_HOURS = 1
-MAX_INTERVAL_HOURS = 24  # cap backoff at 24h
+# Batch-size throttling: on errors, halve MAX_EMAILS instead of slowing the schedule.
+# The base value is read from the Lambda env var MAX_EMAILS (default 10).
+BASE_MAX_EMAILS = int(os.environ.get("MAX_EMAILS", "10"))
+MIN_MAX_EMAILS = 1  # floor — always process at least 1 email per run
 
 
 # ── Delivery failure classification ─────────────────────────────────────────
@@ -67,7 +73,7 @@ def _load_state(s3_client) -> dict:
     """Load the delivery state from S3. Returns default state if not found."""
     default = {
         "consecutive_failures": 0,
-        "current_interval_hours": BASE_INTERVAL_HOURS,
+        "current_max_emails": BASE_MAX_EMAILS,
         "last_failure": None,
         "last_success": None,
         "last_error": None,
@@ -100,30 +106,21 @@ def _save_state(s3_client, state: dict) -> None:
         logger.warning("Could not save delivery state to S3: %s", exc)
 
 
-# ── EventBridge schedule management ─────────────────────────────────────────
+# ── Batch-size throttle (replaces old EventBridge schedule management) ──────
 
-def _update_eventbridge_rate(interval_hours: int) -> bool:
-    """Update the EventBridge rule schedule to `rate(N hours)`.
+def get_throttled_max_emails() -> int:
+    """Return the current throttled MAX_EMAILS value from S3 state.
 
-    Returns True if the update succeeded.
+    Call this at the start of each Lambda run to determine how many emails
+    to process. Returns BASE_MAX_EMAILS if no throttle is active.
     """
     try:
-        client = boto3.client("events", region_name=AWS_REGION)
-        # EventBridge requires "hour" (singular) for rate(1 hour)
-        unit = "hour" if interval_hours == 1 else "hours"
-        new_schedule = f"rate({interval_hours} {unit})"
-
-        client.put_rule(
-            Name=EVENTBRIDGE_RULE_NAME,
-            ScheduleExpression=new_schedule,
-            State="ENABLED",
-            Description=f"Trigger flolabs-email-automation every {interval_hours} {unit}",
-        )
-        logger.info("EventBridge schedule updated to: %s", new_schedule)
-        return True
+        s3 = boto3.client("s3", region_name=AWS_REGION)
+        state = _load_state(s3)
+        return state.get("current_max_emails", BASE_MAX_EMAILS)
     except Exception as exc:
-        logger.error("Failed to update EventBridge schedule: %s", exc)
-        return False
+        logger.warning("Could not read throttle state: %s — using default %d", exc, BASE_MAX_EMAILS)
+        return BASE_MAX_EMAILS
 
 
 # ── Discord alerts ───────────────────────────────────────────────────────────
@@ -131,7 +128,7 @@ def _update_eventbridge_rate(interval_hours: int) -> bool:
 def _send_discord_alert(
     error_msg: str,
     consecutive_failures: int,
-    new_interval_hours: int,
+    new_max_emails: int,
 ) -> None:
     """Send a Discord embed alerting about the delivery failure."""
     webhook_url = DISCORD_WEBHOOK_URL
@@ -147,16 +144,17 @@ def _send_discord_alert(
     fields = [
         {"name": "Error", "value": f"```\n{error_preview}\n```", "inline": False},
         {"name": "Consecutive Failures", "value": str(consecutive_failures), "inline": True},
-        {"name": "New Interval", "value": f"Every {new_interval_hours}h", "inline": True},
+        {"name": "Batch Size", "value": f"{new_max_emails} emails/run", "inline": True},
         {"name": "Timestamp", "value": now, "inline": True},
     ]
 
-    if new_interval_hours > BASE_INTERVAL_HOURS:
+    if new_max_emails < BASE_MAX_EMAILS:
         fields.append({
             "name": "⚠️ Throttled",
             "value": (
-                f"Frequency reduced from 1h to **{new_interval_hours}h** to avoid "
-                f"hammering broken credentials. Will restore to 1h when the issue is fixed."
+                f"Batch size reduced from {BASE_MAX_EMAILS} to **{new_max_emails}** emails per run "
+                f"to reduce load while errors persist. Schedule stays at every 1h. "
+                f"Will restore to {BASE_MAX_EMAILS} when the issue is fixed."
             ),
             "inline": False,
         })
@@ -174,7 +172,7 @@ def _send_discord_alert(
                 "footer": {
                     "text": (
                         "Fix: regenerate the Gmail App Password, update it in the "
-                        "Lambda env vars, and redeploy. The schedule will auto-restore on success."
+                        "Lambda env vars, and redeploy. Batch size will auto-restore on success."
                     ),
                 },
             }
@@ -205,7 +203,7 @@ def _send_discord_recovery() -> None:
                 "color": 0x2ECC71,  # green
                 "description": (
                     "The FloLabs email automation is working again. "
-                    "Schedule has been restored to **every 1 hour**."
+                    f"Batch size restored to **{BASE_MAX_EMAILS} emails/run**."
                 ),
                 "fields": [
                     {"name": "Timestamp", "value": now, "inline": True},
@@ -230,7 +228,8 @@ def report_failure(error_msg: str) -> None:
     """Call this when the automation fails with a delivery error.
 
     - Increments the failure counter
-    - Doubles the EventBridge interval (up to MAX_INTERVAL_HOURS)
+    - Halves the MAX_EMAILS batch size (down to MIN_MAX_EMAILS)
+    - EventBridge schedule stays at 1h (never changed)
     - Sends a Discord alert
     - Persists state to S3
     """
@@ -245,30 +244,20 @@ def report_failure(error_msg: str) -> None:
     state["last_failure"] = datetime.now(timezone.utc).isoformat()
     state["last_error"] = error_msg[:2000]
 
-    # Double the interval (backoff), capped at MAX_INTERVAL_HOURS
-    new_interval = min(
-        state["current_interval_hours"] * 2,
-        MAX_INTERVAL_HOURS,
-    )
-    # On first failure, go from 1h to 2h
-    if state["current_interval_hours"] < 2:
-        new_interval = 2
-
-    old_interval = state["current_interval_hours"]
-    state["current_interval_hours"] = new_interval
-
-    # Update EventBridge schedule
-    _update_eventbridge_rate(new_interval)
+    # Halve the batch size (backoff), floored at MIN_MAX_EMAILS
+    old_max = state.get("current_max_emails", BASE_MAX_EMAILS)
+    new_max = max(old_max // 2, MIN_MAX_EMAILS)
+    state["current_max_emails"] = new_max
 
     # Alert Discord
-    _send_discord_alert(error_msg, state["consecutive_failures"], new_interval)
+    _send_discord_alert(error_msg, state["consecutive_failures"], new_max)
 
     # Persist
     _save_state(s3, state)
 
     logger.info(
-        "Delivery failure #%d — interval changed from %dh to %dh.",
-        state["consecutive_failures"], old_interval, new_interval,
+        "Delivery failure #%d — batch size changed from %d to %d emails/run.",
+        state["consecutive_failures"], old_max, new_max,
     )
 
 
@@ -276,7 +265,7 @@ def report_success() -> None:
     """Call this when the automation succeeds.
 
     - Resets the failure counter
-    - Restores EventBridge to the base interval (1h) if it was throttled
+    - Restores MAX_EMAILS to the base value if it was throttled
     - Sends a recovery Discord notification if recovering from failures
     """
     s3 = boto3.client("s3", region_name=AWS_REGION)
@@ -288,10 +277,9 @@ def report_success() -> None:
     state["last_success"] = datetime.now(timezone.utc).isoformat()
 
     if was_throttled:
-        # Restore original schedule
-        state["current_interval_hours"] = BASE_INTERVAL_HOURS
-        _update_eventbridge_rate(BASE_INTERVAL_HOURS)
+        # Restore original batch size
+        state["current_max_emails"] = BASE_MAX_EMAILS
         _send_discord_recovery()
-        logger.info("Recovered from delivery failures — schedule restored to 1h.")
+        logger.info("Recovered from delivery failures — batch size restored to %d.", BASE_MAX_EMAILS)
 
     _save_state(s3, state)
