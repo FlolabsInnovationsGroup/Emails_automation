@@ -1,12 +1,19 @@
 """
 AWS Lambda entry point for FloLabs Email Automation.
+Function name: flolabs-email-automation   Handler: handler.handler
 
-Triggered hourly by EventBridge. This handler:
-1. Downloads token.json and credentials.json from S3 to /tmp/
-2. Sets environment variables so config.py picks up the right paths + auto mode
-3. Runs the email automation (main.main with no CLI args)
-4. Uploads the (possibly OAuth-refreshed) token.json back to S3
-5. Returns a JSON response with success/failure info
+Triggered hourly by EventBridge. Execution flow:
+  1. Override env vars so config.py uses /tmp/ paths and auto-sends
+  2. Download token.json + credentials.json from S3 -> /tmp/
+  3. Run main.main() -- processes unread emails, sends replies
+  4. Upload (possibly OAuth-refreshed) token.json back to S3
+  5. Return JSON result
+
+Environment variables expected on the Lambda function (set by deploy.ps1):
+  S3_BUCKET, S3_PREFIX, EMAIL_ADDRESS, EMAIL_PASSWORD, OPENAI_API_KEY,
+  NOTION_API_TOKEN, NOTION_DATABASE_ID, DISCORD_WEBHOOK_URL, and all others
+  from .env.  REPLY_MODE is forced to "auto" in code regardless of the value
+  stored in the env var.
 """
 
 import json
@@ -19,136 +26,99 @@ import boto3
 logger = logging.getLogger("email_automation.lambda")
 logger.setLevel(logging.INFO)
 
-# S3 config — bucket name set via Lambda environment variable
+# S3 config -- set via Lambda environment variables by deploy.ps1
 S3_BUCKET = os.environ.get("S3_BUCKET", "")
-S3_PREFIX = os.environ.get("S3_PREFIX", "email-automation/")  # key prefix in the bucket
+S3_PREFIX = os.environ.get("S3_PREFIX", "email-automation/")
 S3_TOKEN_KEY = S3_PREFIX + "token.json"
 S3_CREDENTIALS_KEY = S3_PREFIX + "credentials.json"
 
-# Local paths in Lambda's writable /tmp directory
+# Writable temp paths available inside Lambda
 LOCAL_TOKEN = "/tmp/token.json"
 LOCAL_CREDENTIALS = "/tmp/credentials.json"
 
 
-def _download_from_s3(s3_client, bucket: str, key: str, local_path: str) -> None:
-    """Download a file from S3 to a local path."""
-    logger.info("Downloading s3://%s/%s -> %s", bucket, key, local_path)
-    s3_client.download_file(bucket, key, local_path)
+def _download(s3_client, bucket: str, key: str, dest: str) -> None:
+    logger.info("S3 download: s3://%s/%s -> %s", bucket, key, dest)
+    s3_client.download_file(bucket, key, dest)
 
 
-def _upload_to_s3(s3_client, local_path: str, bucket: str, key: str) -> None:
-    """Upload a local file to S3."""
-    if os.path.exists(local_path):
-        logger.info("Uploading %s -> s3://%s/%s", local_path, bucket, key)
-        s3_client.upload_file(local_path, bucket, key)
+def _upload(s3_client, src: str, bucket: str, key: str) -> None:
+    if os.path.exists(src):
+        logger.info("S3 upload: %s -> s3://%s/%s", src, bucket, key)
+        s3_client.upload_file(src, bucket, key)
     else:
-        logger.warning("File %s does not exist, skipping upload.", local_path)
+        logger.warning("Upload skipped -- file not found: %s", src)
 
 
 def handler(event, context):
-    """Lambda handler. Triggered by EventBridge (hourly) or manual invocation."""
-    logger.info("Lambda invoked. Event: %s", json.dumps(event, default=str))
+    """Lambda entry point. Called by EventBridge every hour."""
+    logger.info("Invoked. event=%s", json.dumps(event, default=str))
 
-    # ── 1. Override env vars for Lambda context ─────────────────────────────
-    # These ensure config.py reads the /tmp/ paths and sends immediately.
+    # -- 1. Force env vars before any src import reads them ------------------
+    # config.py uses os.getenv() inside dataclass field_factory calls, so we
+    # must set these before the first `from src.config import Config` anywhere.
     os.environ["GMAIL_TOKEN_FILE"] = LOCAL_TOKEN
     os.environ["GMAIL_CREDENTIALS_FILE"] = LOCAL_CREDENTIALS
-    os.environ["REPLY_MODE"] = "auto"
+    os.environ["REPLY_MODE"] = "auto"       # always send; never queue in Lambda
+    os.environ.setdefault("LOG_FILE", "")   # Lambda logs to stdout/CloudWatch
 
-    # ── 2. Download OAuth files from S3 ─────────────────────────────────────
+    # -- 2. Guard: S3_BUCKET must be set ------------------------------------
     if not S3_BUCKET:
-        return {
-            "statusCode": 500,
-            "body": json.dumps({"error": "S3_BUCKET environment variable not set"})
-        }
+        msg = "S3_BUCKET environment variable is not set -- aborting."
+        logger.error(msg)
+        return {"statusCode": 500, "body": json.dumps({"error": msg})}
 
+    # -- 3. Download OAuth credentials from S3 ------------------------------
     s3 = boto3.client("s3")
     try:
-        _download_from_s3(s3, S3_BUCKET, S3_CREDENTIALS_KEY, LOCAL_CREDENTIALS)
-        _download_from_s3(s3, S3_BUCKET, S3_TOKEN_KEY, LOCAL_TOKEN)
+        _download(s3, S3_BUCKET, S3_CREDENTIALS_KEY, LOCAL_CREDENTIALS)
+        _download(s3, S3_BUCKET, S3_TOKEN_KEY, LOCAL_TOKEN)
     except Exception as exc:
-        logger.error("Failed to download files from S3: %s", exc)
+        logger.error("S3 download failed: %s", exc)
         return {
             "statusCode": 500,
-            "body": json.dumps({"error": f"S3 download failed: {exc}"})
+            "body": json.dumps({"error": f"S3 download failed: {exc}"}),
         }
 
-    # ── 3. Run the email automation ─────────────────────────────────────────
-    from src.delivery_monitor import report_failure, report_success, get_throttled_max_emails
-
-    # Apply batch-size throttle: if previous runs failed, reduce MAX_EMAILS
-    # while keeping the hourly schedule unchanged.
-    throttled_max = get_throttled_max_emails()
-    current_max = int(os.environ.get("MAX_EMAILS", "10"))
-    if throttled_max < current_max:
-        logger.info(
-            "Delivery throttle active: MAX_EMAILS reduced from %d to %d.",
-            current_max, throttled_max,
-        )
-        os.environ["MAX_EMAILS"] = str(throttled_max)
-
+    # -- 4. Run the email automation ----------------------------------------
     exit_code = 1
     try:
-        # Import here so env vars are already set when Config() reads them
+        # Late import: env vars must already be set before Config() is built
         from main import main as run_main
 
-        exit_code = run_main(argv=[])  # No CLI args — uses env vars
-        logger.info("Email automation completed with exit code: %d", exit_code)
+        exit_code = run_main(argv=[])  # argv=[] -> use env vars, no CLI flags
+        logger.info("run completed, exit_code=%d", exit_code)
 
     except Exception as exc:
-        error_msg = str(exc)
-        logger.error("Email automation failed: %s\n%s", exc, traceback.format_exc())
-
-        # Report delivery failure — throttles schedule + alerts Discord
+        logger.error("Unhandled error in run_main: %s\n%s", exc, traceback.format_exc())
+        # Best-effort token upload even on crash (OAuth may have refreshed)
         try:
-            report_failure(error_msg)
-        except Exception as monitor_exc:
-            logger.warning("Delivery monitor failed: %s", monitor_exc)
-
-        # Still try to upload token in case OAuth refreshed before the crash
-        try:
-            _upload_to_s3(s3, LOCAL_TOKEN, S3_BUCKET, S3_TOKEN_KEY)
+            _upload(s3, LOCAL_TOKEN, S3_BUCKET, S3_TOKEN_KEY)
         except Exception:
             pass
         return {
             "statusCode": 500,
             "body": json.dumps({
-                "error": error_msg,
-                "traceback": traceback.format_exc()
-            })
+                "error": str(exc),
+                "traceback": traceback.format_exc(),
+            }),
         }
 
-    # ── 4. Upload (possibly refreshed) token.json back to S3 ───────────────
+    # -- 5. Upload refreshed token.json back to S3 --------------------------
+    # Google OAuth silently rotates the access token on each use; the new
+    # token is written to LOCAL_TOKEN by google-auth. We persist it so the
+    # next hourly invocation does not have to re-authorise.
     try:
-        _upload_to_s3(s3, LOCAL_TOKEN, S3_BUCKET, S3_TOKEN_KEY)
+        _upload(s3, LOCAL_TOKEN, S3_BUCKET, S3_TOKEN_KEY)
     except Exception as exc:
-        logger.warning("Failed to upload token.json to S3: %s (non-fatal)", exc)
+        logger.warning("token.json upload failed (non-fatal): %s", exc)
 
-    # ── 5. Report outcome and return result ─────────────────────────────────
-    if exit_code == 0:
-        try:
-            report_success()
-        except Exception as monitor_exc:
-            logger.warning("Delivery monitor (success) failed: %s", monitor_exc)
-    else:
-        # Non-zero exit code without an exception — still a failure.
-        # Exit code 2 = per-email SMTP errors (e.g. sending limit exceeded).
-        # Use a message that matches _DELIVERY_ERROR_PATTERNS so throttle kicks in.
-        if exit_code == 2:
-            failure_msg = "SMTP failed after retries — per-email send errors detected"
-        else:
-            failure_msg = f"Email automation exited with code {exit_code}"
-        try:
-            report_failure(failure_msg)
-        except Exception as monitor_exc:
-            logger.warning("Delivery monitor failed: %s", monitor_exc)
-
+    # -- 6. Return ----------------------------------------------------------
     success = exit_code == 0
     return {
         "statusCode": 200 if success else 500,
         "body": json.dumps({
-            "message": "Email automation completed successfully" if success
-                       else f"Email automation finished with exit code {exit_code}",
-            "exit_code": exit_code
-        })
+            "message": "OK" if success else f"exited with code {exit_code}",
+            "exit_code": exit_code,
+        }),
     }
