@@ -119,6 +119,22 @@ OpenAI returns rate-limit headers (`x-ratelimit-remaining-requests`,
 does not expose these easily. Workaround: check usage at
 https://platform.openai.com/usage — no code solution yet.
 
+### 5. NO_REPLY emails now left UNREAD (FIXED 2026-03-28)
+Previously, when the LLM returned `NO_REPLY` (email should be handled by a
+human), the bot still marked the email as read — effectively hiding it from
+the inbox. Fix: NO_REPLY emails are now left **unread** so humans can see
+and handle them. The message ID is recorded in the replied tracker to prevent
+re-processing on the next run.
+
+### 6. Bounce notifications wasting LLM tokens (FIXED 2026-03-28)
+`mailer-daemon@googlemail.com` delivery failure notifications were passing
+through to the LLM, which couldn't match a Notion template and triggered
+Discord "unmatched template" alerts. Fix: `googlemail.com` added to
+`_SKIP_DOMAINS`, and a dedicated bounce detection block catches any
+`mailer-daemon@*` sender early in the processing loop. Bounces trigger a
+red Discord alert (`notify_bounce`) with error details instead of wasting
+LLM tokens.
+
 ---
 
 ## Notion Knowledge Base Integration (added 2026-03-25)
@@ -315,6 +331,7 @@ These domains are blocked in `_is_processable()` and never get replies:
 | `calendar.google.com` | Google Calendar invitations |
 | `google.com` | Google Calendar notifications |
 | `calendly.com` | Calendly scheduling notifications |
+| `googlemail.com` | Bounce notifications (mailer-daemon) |
 
 **Blocked addresses (`_SKIP_ADDRESSES`):**
 

@@ -11,7 +11,7 @@ import os
 import sys
 
 from src.config import Config
-from src.discord_notifier import notify_unmatched_question
+from src.discord_notifier import notify_bounce, notify_unmatched_question
 from src.email_reader import EmailReader
 from src.email_sender import EmailSender, send_queued_emails
 from src.fillout_parser import is_fillout_notification, extract_lead, extract_qa_pairs, detect_form_type
@@ -128,6 +128,7 @@ _SKIP_DOMAINS: set[str] = {
     "calendar.google.com",                  # Google Calendar invitations
     "google.com",                           # Google Calendar notifications
     "calendly.com",                         # Calendly scheduling notifications
+    "googlemail.com",                       # Bounce notifications (mailer-daemon)
 }
 # Internal FloLabs domains — emails from these are John, Oliver, or other staff
 # forwarded back into the inbox. Never auto-reply to them.
@@ -462,6 +463,26 @@ def process_emails(config: Config, dry_run: bool, reply_target: int | None = Non
                     reader.mark_as_read(incoming.uid)
                 continue
 
+            # ── Bounce / delivery failure detection ────────────────────────────
+            # mailer-daemon@googlemail.com sends delivery status notifications.
+            # Don't waste LLM tokens — just alert Discord and mark as read.
+            sender_lower = incoming.sender_address.strip().lower()
+            if sender_lower.startswith("mailer-daemon@"):
+                log.warning(
+                    "Bounce detected UID %s | From: %s | Subject: %s",
+                    incoming.uid, incoming.sender_address, incoming.subject,
+                )
+                if config.discord_webhook_url:
+                    notify_bounce(
+                        subject=incoming.subject or "(no subject)",
+                        body_summary=(incoming.body_text or "")[:500],
+                        original_recipient=incoming.sender_address,
+                        webhook_url=config.discord_webhook_url,
+                    )
+                if not dry_run and config.mark_as_read:
+                    reader.mark_as_read(incoming.uid)
+                continue
+
             # Skip emails not addressed to an HR address, or from bots/ourselves
             if not _is_processable(incoming):
                 log.info(
@@ -606,13 +627,17 @@ def process_emails(config: Config, dry_run: bool, reply_target: int | None = Non
 
                     # LLM may return NO_REPLY for emails that should be left
                     # for a human (e.g. meeting confirmations, availability slots).
+                    # DO NOT mark as read — leave unread so humans can find them.
+                    # Record in tracker to avoid re-processing on next run.
                     if reply_body.strip().upper() == "NO_REPLY":
                         log.info(
-                            "LLM returned NO_REPLY for UID %s — skipping (left for human).",
+                            "LLM returned NO_REPLY for UID %s — leaving UNREAD for human.",
                             incoming.uid,
                         )
-                        if not dry_run and config.mark_as_read:
-                            reader.mark_as_read(incoming.uid)
+                        # Record in tracker so we don't re-process this email
+                        no_reply_mid = incoming.message_id.strip()
+                        if no_reply_mid:
+                            tracker.record_reply(no_reply_mid, thread_root=None)
                         continue
 
                     # Classify stage BEFORE sending so we can decide on CC.
